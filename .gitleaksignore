@@ -1,0 +1,3 @@
+# README example for the local compose stack: "local-metrics-token" is a
+# placeholder from docker-compose.yml, not a credential.
+36b54af6f6bc5c2cf5ae4ac858fbe057d0b8cd75:README.md:curl-auth-header:160

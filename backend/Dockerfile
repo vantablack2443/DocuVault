@@ -8,6 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MALLOC_ARENA_MAX=2 \
     PATH=/opt/venv/bin:$PATH
 WORKDIR /app
+# Take the distribution's security fixes that are newer than the base image.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
 # Production dependencies only.
 FROM base AS builder

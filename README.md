@@ -5,6 +5,7 @@ external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
 [![CI](https://github.com/vantablack2443/DocuVault/actions/workflows/ci.yml/badge.svg)](https://github.com/vantablack2443/DocuVault/actions/workflows/ci.yml)
 [![k8s-smoke](https://github.com/vantablack2443/DocuVault/actions/workflows/k8s-smoke.yml/badge.svg)](https://github.com/vantablack2443/DocuVault/actions/workflows/k8s-smoke.yml)
+[![security](https://github.com/vantablack2443/DocuVault/actions/workflows/security.yml/badge.svg)](https://github.com/vantablack2443/DocuVault/actions/workflows/security.yml)
 
 **Live demo: <https://docuvault.dipubalamurugan.workers.dev>** — click "Try the live demo",
 no sign-up. The API runs on a free host that sleeps when idle, so the first click can
@@ -83,6 +84,20 @@ docker compose --profile test run --rm --build test
 
 Runs `ruff`, `mypy --strict`, the Alembic migrations and `pytest` (85 % coverage
 gate) against real PostgreSQL and Redis containers.
+
+A separate `security` workflow runs on every push and weekly:
+
+| Check | Tool | Fails when |
+|---|---|---|
+| Vulnerable dependencies | `pip-audit` on the lockfile, `npm audit` | a known advisory affects a pinned version |
+| Secrets in the git history | gitleaks | anything that looks like a credential was ever committed |
+| Container image | Trivy | a high or critical flaw has a fix available |
+| Code patterns | CodeQL (Python, TypeScript) | results appear under the repository's Security tab |
+
+Dependabot proposes dependency, base-image and workflow updates weekly. These tools
+find known problems. They do not find design flaws: the two most serious bugs so far
+(a proxy that could be pointed at any host, a rate limit that trusted a forgeable
+header) were found by attacking the running demo by hand.
 
 ## Redaction benchmark
 
