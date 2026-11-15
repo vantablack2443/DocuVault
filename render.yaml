@@ -13,6 +13,11 @@ services:
     dockerCommand: sh start.sh
     healthCheckPath: /healthz
     autoDeploy: true
+    # Dashboard and documentation changes must not restart the API.
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -33,4 +38,6 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: METRICS_TOKEN
+        sync: false
+      - key: PROXY_SECRET
         sync: false

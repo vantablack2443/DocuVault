@@ -60,7 +60,11 @@ async def guest(request: Request, session: SessionDep, settings: SettingsDep) ->
         session,
         request.app.state.redis,
         settings,
-        client_ip=client_ip(request, settings.trusted_proxy_hops),
+        client_ip=client_ip(
+            request,
+            settings.trusted_proxy_hops,
+            settings.proxy_secret.get_secret_value() if settings.proxy_secret else None,
+        ),
     )
     return _token_response(tokens)
 

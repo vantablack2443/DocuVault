@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     trusted_proxy_hops: int = 0
     # /metrics answers only with this bearer token; unset means the endpoint is off.
     metrics_token: SecretStr | None = None
+    # Shared with the dashboard's edge proxy, which then may state the visitor address.
+    proxy_secret: SecretStr | None = None
 
     # Names and places need the spaCy model; formats with checksums work without it.
     ner_enabled: bool = True
@@ -62,7 +64,9 @@ class Settings(BaseSettings):
     seed_admin_email: str | None = None
     seed_admin_password: SecretStr | None = None
 
-    @field_validator("gemini_api_key", "groq_api_key", "metrics_token", mode="before")
+    @field_validator(
+        "gemini_api_key", "groq_api_key", "metrics_token", "proxy_secret", mode="before"
+    )
     @classmethod
     def blank_means_unset(cls, value: object) -> object:
         """Hosting dashboards store a field left empty as an empty string.

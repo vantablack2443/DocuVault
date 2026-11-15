@@ -1,8 +1,16 @@
-// Cloudflare Workers, static assets only: serves the built dashboard, runs no code.
+// Cloudflare Worker: serves the built dashboard and forwards /api/* to the API.
+// Files in dist are answered by Cloudflare directly; worker.js runs only for
+// paths that are not a file.
 {
   "name": "docuvault",
+  "main": "worker.js",
   "compatibility_date": "2026-11-01",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "API_ORIGIN": "https://docuvault-api-eqtt.onrender.com"
   }
+  // PROXY_SECRET is set as a secret in the Cloudflare dashboard, never here.
 }

@@ -23,6 +23,7 @@ function tabFromHash(): TabId {
 export function App() {
   const [awake, setAwake] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [stuck, setStuck] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [signedIn, setSignedIn] = useState(hasSession);
   const [tab, setTab] = useState<TabId>(tabFromHash);
@@ -30,6 +31,7 @@ export function App() {
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(() => setSlow(true), 1500);
+    const giveUp = setTimeout(() => setStuck(true), 90_000);
     api.wake(controller.signal).then(
       () => setAwake(true),
       () => undefined,
@@ -37,6 +39,7 @@ export function App() {
     return () => {
       controller.abort();
       clearTimeout(timer);
+      clearTimeout(giveUp);
     };
   }, []);
 
@@ -74,7 +77,9 @@ export function App() {
   const waking = !awake && slow && (
     <p className="waking" role="status">
       <span className="waking-dot" aria-hidden="true" />
-      Waking the server. It sleeps when nobody uses it, so the first visit takes up to a minute.
+      {stuck
+        ? "The server is still not answering. Reload the page; if that does not help, the server may be restarting. Try again in a few minutes."
+        : "Waking the server. It sleeps when nobody uses it, so the first visit takes up to a minute."}
     </p>
   );
 

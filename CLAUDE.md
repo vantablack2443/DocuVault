@@ -89,3 +89,5 @@ docs/adr/           architecture decision records
 - Client address for rate limits: always `app.core.network.client_ip`, never `request.client.host` directly.
 - Guest tenants: any new code path that calls a live provider must go through `gateway.service._restriction` (daily guest budget).
 - Helm chart check without local tools: `docker run --rm -v "$PWD/deploy/helm:/charts" -w /charts alpine/helm:3.17.3 lint docuvault -f docuvault/values-kind.yaml`
+- Dashboard in production calls the API as `/api/...` on its own address; `web/worker.js` forwards (ADR 0005). Never point the production build at the `onrender.com` address: content blockers stop it.
+- Pushes that touch only `web/` or docs do not redeploy the API (`buildFilter` in `render.yaml`).

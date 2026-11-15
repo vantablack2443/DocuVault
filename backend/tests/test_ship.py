@@ -19,8 +19,9 @@ from tests.test_gateway_api import use_providers
 # --- client address ----------------------------------------------------------
 
 
-def request_from(peer: str | None, forwarded: str | None = None) -> Request:
+def request_from(peer: str | None, forwarded: str | None = None, **extra: str) -> Request:
     headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded is not None else []
+    headers += [(name.replace("_", "-").encode(), value.encode()) for name, value in extra.items()]
     client = (peer, 1234) if peer is not None else None
     return Request({"type": "http", "headers": headers, "client": client})
 
@@ -41,6 +42,20 @@ def test_falls_back_to_the_socket_when_the_header_is_too_short() -> None:
     assert client_ip(request_from("10.0.0.1", "203.0.113.9"), 2) == "10.0.0.1"
     assert client_ip(request_from("10.0.0.1"), 1) == "10.0.0.1"
     assert client_ip(request_from("10.0.0.1", " , "), 1) == "10.0.0.1"
+
+
+def test_edge_proxy_may_state_the_address_only_with_the_secret() -> None:
+    stated = {"x_docuvault_client_ip": "203.0.113.9"}
+    trusted = request_from("10.0.0.1", "172.16.0.1", x_docuvault_proxy_secret="s3cret", **stated)
+    wrong = request_from("10.0.0.1", "172.16.0.1", x_docuvault_proxy_secret="guess", **stated)
+    missing = request_from("10.0.0.1", "172.16.0.1", **stated)
+
+    assert client_ip(trusted, 1, "s3cret") == "203.0.113.9"
+    assert client_ip(wrong, 1, "s3cret") == "172.16.0.1"
+    assert client_ip(missing, 1, "s3cret") == "172.16.0.1"
+    assert client_ip(trusted, 0, None) == "10.0.0.1"  # no secret configured: header ignored
+    empty = request_from("10.0.0.1", x_docuvault_proxy_secret="s3cret", x_docuvault_client_ip=" ")
+    assert client_ip(empty, 0, "s3cret") == "10.0.0.1"
 
 
 async def test_guest_limit_counts_per_forwarded_address(app: FastAPI, client: AsyncClient) -> None:

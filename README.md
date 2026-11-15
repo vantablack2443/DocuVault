@@ -13,7 +13,7 @@ take up to a minute. API docs: <https://docuvault-api-eqtt.onrender.com/docs>
 ```mermaid
 flowchart LR
     app["Your application<br/>(any OpenAI client)"] -->|"dv_… API key"| gw
-    dash["Dashboard<br/>(React, static)"] -->|JWT| gw
+    dash["Dashboard<br/>(React on Cloudflare,<br/>forwards /api)"] -->|JWT| gw
 
     subgraph docuvault["DocuVault API (FastAPI, one container)"]
         gw["Rate limit"] --> red["Redact<br/>checksums · patterns · spaCy"]
