@@ -7,14 +7,41 @@
 
 const PREFIX = "/api";
 
+// The API's interactive documentation loads scripts from a public CDN. Served
+// under the dashboard's address those scripts could read a visitor's session,
+// so the documentation stays on the API's own address.
+const NOT_FORWARDED = new Set(["/docs", "/redoc", "/openapi.json", "/metrics"]);
+
+function notFound() {
+  return new Response('{"detail":"Not found"}', {
+    status: 404,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname !== PREFIX && !url.pathname.startsWith(`${PREFIX}/`)) {
       return env.ASSETS.fetch(request);
     }
-    const target = new URL(url.pathname.slice(PREFIX.length) || "/", env.API_ORIGIN);
+    const path = url.pathname.slice(PREFIX.length) || "/";
+    // "/api//evil.example/x" must never turn into a request to evil.example.
+    // The path is set on a URL that already has the API's host, and anything
+    // that does not start with exactly one slash is refused outright.
+    if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
+      return notFound();
+    }
+    if (NOT_FORWARDED.has(path)) {
+      return notFound();
+    }
+    const origin = new URL(env.API_ORIGIN);
+    const target = new URL(origin);
+    target.pathname = path;
     target.search = url.search;
+    if (target.origin !== origin.origin) {
+      return notFound();
+    }
 
     const headers = new Headers(request.headers);
     headers.delete("host");

@@ -64,4 +64,37 @@ describe("worker", () => {
     expect(headers.has("x-docuvault-client-ip")).toBe(false);
     expect(headers.has("x-docuvault-proxy-secret")).toBe(false);
   });
+
+  it.each([
+    "https://site.example/api//evil.example/steal",
+    "https://site.example/api///evil.example",
+    "https://site.example/api/%5Cevil.example",
+    "https://site.example/api//",
+  ])("never forwards to another host: %s", async (address) => {
+    const spy = upstream();
+    const response = await worker.fetch(new Request(address), env);
+    for (const [url] of spy.mock.calls) {
+      expect(new URL(String(url)).origin).toBe("https://api.example");
+    }
+    if (spy.mock.calls.length === 0) {
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it("does not forward a path that would resolve to another host", async () => {
+    const spy = upstream();
+    const response = await worker.fetch(new Request("https://site.example/api//evil.example/x"), env);
+    expect(response.status).toBe(404);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it.each(["/api/docs", "/api/redoc", "/api/openapi.json", "/api/metrics"])(
+    "keeps %s off the dashboard's address",
+    async (path) => {
+      const spy = upstream();
+      const response = await worker.fetch(new Request(`https://site.example${path}`), env);
+      expect(response.status).toBe(404);
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
 });
