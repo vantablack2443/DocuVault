@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     rate_limit_capacity: int = 20
     rate_limit_refill_per_second: float = 0.5
 
+    # Safety-net wake-up of the stream consumer; normally the publisher wakes it.
+    consumer_idle_seconds: float = 300.0
+    # Browser origins allowed to call the API (the dashboard).
+    cors_origins: list[str] = ["http://localhost:5173"]
+
     seed_admin_email: str | None = None
     seed_admin_password: SecretStr | None = None
 

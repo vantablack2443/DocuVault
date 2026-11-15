@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -6,12 +8,14 @@ from contextlib import asynccontextmanager
 import httpx
 import structlog
 from fastapi import FastAPI, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.admin import router as admin_router
 from app.api import health
+from app.audit import router as audit_router
 from app.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.errors import (
@@ -23,6 +27,7 @@ from app.core.errors import (
 from app.core.logging import configure_logging
 from app.gateway import router as gateway_router
 from app.gateway.failover import AllProvidersFailedError, build_chain
+from app.jobs.events import Consumer, EventBus
 from app.ratelimit.token_bucket import TokenBucket
 from app.redaction import router as redaction_router
 from app.redaction.engine import build_engine
@@ -49,10 +54,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         capacity=settings.rate_limit_capacity,
         refill_per_second=settings.rate_limit_refill_per_second,
     )
+    app.state.event_bus = EventBus(redis)
+    app.state.consumer = Consumer(
+        redis,
+        app.state.session_factory,
+        app.state.event_bus,
+        idle_seconds=settings.consumer_idle_seconds,
+    )
+    consumer_task = asyncio.create_task(app.state.consumer.run())
     log.info("startup", environment=settings.environment, llm_mode=settings.llm_mode)
     try:
         yield
     finally:
+        consumer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await consumer_task
         await http.aclose()
         await redis.aclose()
         await engine.dispose()
@@ -90,11 +106,20 @@ def create_app() -> FastAPI:
         return response
 
     register_error_handlers(app)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["*"],
+        allow_headers=["Authorization", "Content-Type"],
+        expose_headers=["X-DocuVault-Provider", "X-DocuVault-Cache", "X-DocuVault-Redactions"],
+    )
     app.include_router(health.router)
     app.include_router(auth_router.router)
     app.include_router(admin_router.router)
     app.include_router(gateway_router.router)
     app.include_router(redaction_router.router)
+    app.include_router(gateway_router.playground_router)
+    app.include_router(audit_router.router)
     return app
 
 

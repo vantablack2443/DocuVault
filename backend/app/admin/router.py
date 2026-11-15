@@ -1,10 +1,18 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.admin import service
-from app.admin.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, PolicyBody, UserOut
+from app.admin.schemas import (
+    ApiKeyCreate,
+    ApiKeyCreated,
+    ApiKeyOut,
+    PolicyBody,
+    RequestOut,
+    UsageDay,
+    UserOut,
+)
 from app.auth.dependencies import require_roles
 from app.auth.schemas import ErrorResponse
 from app.auth.service import Principal
@@ -68,3 +76,20 @@ async def get_policy(principal: Reader, session: SessionDep) -> PolicyBody:
 async def set_policy(body: PolicyBody, principal: Admin, session: SessionDep) -> PolicyBody:
     enabled = await service.set_policy(session, principal, body.enabled_types)
     return PolicyBody(enabled_types=enabled)
+
+
+@router.get("/usage", response_model=list[UsageDay], summary="Daily usage of my tenant")
+async def list_usage(
+    principal: Reader, session: SessionDep, days: Annotated[int, Query(ge=1, le=90)] = 14
+) -> list[UsageDay]:
+    rows = await service.list_usage(session, principal, days)
+    return [UsageDay.model_validate(row) for row in rows]
+
+
+@router.get("/requests", response_model=list[RequestOut], summary="Latest gateway calls")
+async def list_requests(
+    principal: Reader, session: SessionDep, limit: Annotated[int, Query(ge=1, le=200)] = 50
+) -> list[RequestOut]:
+    """Metadata only: prompts and answers are never stored."""
+    rows = await service.list_requests(session, principal, limit)
+    return [RequestOut.model_validate(row) for row in rows]

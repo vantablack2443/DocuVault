@@ -3,9 +3,9 @@
 OpenAI-compatible LLM gateway that minimises German PII before prompts reach an
 external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
-> **Status: Phase 3 of 5 (gateway).** OpenAI-compatible `/v1/chat/completions` with
-> redaction, streaming re-hydration, provider failover, response cache and rate limiting.
-> No dashboard or public deployment yet. Roadmap: [docs/PLAN.md](docs/PLAN.md).
+> **Status: Phase 4 of 5, backend half.** Gateway, redaction, hash-chained audit log,
+> usage aggregation through a Redis Stream consumer, playground API.
+> Dashboard UI and public deployment are still to come. Roadmap: [docs/PLAN.md](docs/PLAN.md).
 
 ## Run locally
 
@@ -37,7 +37,9 @@ What happens to a request:
    breaker skips a provider that keeps failing.
 5. The answer is re-hydrated. In streams, text is held back while it could still be the
    start of a placeholder, so a placeholder split across chunks is never leaked half-way.
-6. Only metadata is logged (provider, latency, counts per PII type).
+6. Only metadata is logged (provider, latency, counts per PII type). An event goes to a
+   Redis Stream; a consumer appends it to the tenant's hash-chained audit log and updates
+   daily usage. `GET /audit/verify` recomputes the chain and reports any tampering.
 
 Without API keys the gateway runs in replay mode: no network, same behaviour, canned answer.
 Set `LLM_MODE=live` with `GEMINI_API_KEY` and/or `GROQ_API_KEY` for real models.

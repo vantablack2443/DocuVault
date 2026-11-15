@@ -1,8 +1,18 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, false, func, text, true
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    false,
+    func,
+    text,
+    true,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -120,3 +130,38 @@ class RequestLog(Base):
     # {"IBAN": 2, "PERSON": 1}: how many values of each type were replaced.
     redaction_counts: Mapped[dict[str, int]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AuditEntry(Base):
+    """One link of a tenant's hash chain. Append-only: a trigger rejects UPDATE and DELETE."""
+
+    __tablename__ = "audit_log"
+    # Also the index behind "latest entries of my tenant".
+    __table_args__ = (UniqueConstraint("tenant_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    seq: Mapped[int]
+    actor: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    details: Mapped[dict[str, object]] = mapped_column(JSONB)
+    # Set by the application, not the database: the value is part of the hash.
+    created_at: Mapped[datetime]
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64))
+    # Redis Stream id of the event this entry came from; makes redelivery harmless.
+    source_id: Mapped[str | None] = mapped_column(String(32), unique=True)
+
+
+class UsageDaily(Base):
+    __tablename__ = "usage_daily"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(primary_key=True)
+    requests: Mapped[int] = mapped_column(default=0)
+    cache_hits: Mapped[int] = mapped_column(default=0)
+    redactions: Mapped[int] = mapped_column(default=0)
+    prompt_tokens: Mapped[int] = mapped_column(default=0)
+    completion_tokens: Mapped[int] = mapped_column(default=0)

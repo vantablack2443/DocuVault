@@ -2,13 +2,22 @@
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ApiKey, Policy, RefreshToken, Tenant, User
+from app.db.models import (
+    ApiKey,
+    AuditEntry,
+    Policy,
+    RefreshToken,
+    RequestLog,
+    Tenant,
+    UsageDaily,
+    User,
+)
 
 # --- users and tenants -------------------------------------------------------
 
@@ -116,3 +125,108 @@ async def upsert_policy(
             set_={"enabled_types": enabled_types, "updated_at": func.now()},
         )
     )
+
+
+async def tenant_exists(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    return await session.scalar(select(Tenant.id).where(Tenant.id == tenant_id)) is not None
+
+
+# --- audit log ---------------------------------------------------------------
+
+
+async def lock_audit_chain(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Serialise appends per tenant until the transaction ends.
+
+    Two writers reading the same "last entry" would both produce seq N+1. A row
+    lock cannot help for an empty chain, so this is an advisory lock on the
+    tenant id.
+    """
+    await session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(str(tenant_id), 0)))
+    )
+
+
+async def last_audit_entry(session: AsyncSession, tenant_id: uuid.UUID) -> AuditEntry | None:
+    result = await session.execute(
+        select(AuditEntry)
+        .where(AuditEntry.tenant_id == tenant_id)
+        .order_by(AuditEntry.seq.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def audit_source_exists(session: AsyncSession, source_id: str) -> bool:
+    found = await session.scalar(select(AuditEntry.id).where(AuditEntry.source_id == source_id))
+    return found is not None
+
+
+async def list_audit(
+    session: AsyncSession, tenant_id: uuid.UUID, *, limit: int, before_seq: int | None = None
+) -> Sequence[AuditEntry]:
+    statement = select(AuditEntry).where(AuditEntry.tenant_id == tenant_id)
+    if before_seq is not None:
+        statement = statement.where(AuditEntry.seq < before_seq)
+    result = await session.execute(statement.order_by(AuditEntry.seq.desc()).limit(limit))
+    return result.scalars().all()
+
+
+async def audit_chain(session: AsyncSession, tenant_id: uuid.UUID) -> Sequence[AuditEntry]:
+    result = await session.execute(
+        select(AuditEntry).where(AuditEntry.tenant_id == tenant_id).order_by(AuditEntry.seq)
+    )
+    return result.scalars().all()
+
+
+# --- usage and request metadata ----------------------------------------------
+
+
+async def add_usage(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    day: date,
+    *,
+    requests: int,
+    cache_hits: int,
+    redactions: int,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> None:
+    """Atomic increment: INSERT ... ON CONFLICT DO UPDATE SET n = n + excluded.n."""
+    values = {
+        "requests": requests,
+        "cache_hits": cache_hits,
+        "redactions": redactions,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+    }
+    statement = insert(UsageDaily).values(tenant_id=tenant_id, day=day, **values)
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[UsageDaily.tenant_id, UsageDaily.day],
+            set_={name: getattr(UsageDaily, name) + statement.excluded[name] for name in values},
+        )
+    )
+
+
+async def list_usage(
+    session: AsyncSession, tenant_id: uuid.UUID, since: date
+) -> Sequence[UsageDaily]:
+    result = await session.execute(
+        select(UsageDaily)
+        .where(UsageDaily.tenant_id == tenant_id, UsageDaily.day >= since)
+        .order_by(UsageDaily.day)
+    )
+    return result.scalars().all()
+
+
+async def list_requests(
+    session: AsyncSession, tenant_id: uuid.UUID, limit: int
+) -> Sequence[RequestLog]:
+    result = await session.execute(
+        select(RequestLog)
+        .where(RequestLog.tenant_id == tenant_id)
+        .order_by(RequestLog.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()

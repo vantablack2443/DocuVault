@@ -7,6 +7,8 @@ import structlog
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import service as audit
+from app.auth.sandbox import seed_sandbox
 from app.core import security
 from app.core.config import Settings
 from app.core.errors import AuthenticationError
@@ -93,6 +95,7 @@ async def login(
         log.info("login_failed")
         raise AuthenticationError
     tokens = _issue_token_pair(session, user, settings)
+    await audit.append(session, user.tenant_id, actor=f"user:{user.id}", action="auth.login")
     await session.commit()
     log.info("login_succeeded", user_id=str(user.id), tenant_id=str(user.tenant_id))
     return tokens
@@ -159,6 +162,7 @@ async def guest_login(
     session.add(tenant)
     await session.flush()
     session.add_all(users)
+    await seed_sandbox(session, tenant, now)
     await session.commit()
     log.info("guest_tenant_created", tenant_id=str(tenant.id))
     return IssuedTokens(

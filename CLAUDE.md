@@ -3,7 +3,7 @@
 OpenAI-compatible LLM gateway that redacts German PII before prompts leave the
 network, re-hydrates responses, and keeps a tamper-evident audit log.
 
-The full phased plan lives in `docs/PLAN.md`. Current phase: **3 (gateway) done, 4 (audit, jobs, dashboard) next**.
+The full phased plan lives in `docs/PLAN.md`. Current phase: **4 backend (audit log, stream consumer, usage, playground API) done; 4 frontend (React dashboard in `web/`) next; then 5 (ship)**.
 
 ## Hard rules
 
@@ -56,6 +56,8 @@ backend/app/auth/      login, refresh, guest sandbox, RBAC dependencies
 backend/app/admin/     users and API keys
 backend/app/gateway/   /v1 endpoints, pipeline (service.py), providers, failover, cache, stream re-hydrator
 backend/app/ratelimit/ Redis rate limiting
+backend/app/audit/     hash-chained audit log, verify endpoint
+backend/app/jobs/      Redis Stream event bus and in-process consumer
 backend/app/redaction/ detectors, NER, engine, placeholder vault, preview endpoint
 backend/benchmark/     synthetic corpus, scorer, thresholds (`python -m benchmark --check`)
 backend/app/seed.py    local admin seed
@@ -74,4 +76,6 @@ docs/adr/           architecture decision records
 - `alembic check` runs in CI: models and migrations must agree.
 - Redaction: never tune detectors on `HELD_OUT_TEMPLATES`. Leak rate is the gate that matters; a precision gain that raises it is a regression. NER memory rules are in ADR 0002.
 - Gateway: the placeholder vault is per request and never persisted (ADR 0003). Providers and the cache only ever see redacted text. Tests use `tests/fakes.py::FakeProvider`; no test may call a real LLM.
+- Audit: call `audit.append(...)` inside the transaction of the change it describes, before the commit. `details` takes ids, counts and enum values only. Never UPDATE or DELETE `audit_log` (ADR 0004).
+- Tests share one persistent database: use unique ids and e-mails, never fixed ones. After `session.rollback()` reload objects before reading attributes.
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).

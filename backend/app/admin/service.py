@@ -1,15 +1,16 @@
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import service as audit
 from app.auth.service import Principal
 from app.core import security
 from app.core.errors import NotFoundError
 from app.db import repositories as repo
-from app.db.models import ApiKey, User
+from app.db.models import ApiKey, RequestLog, UsageDaily, User
 from app.redaction.types import PiiType
 
 log = structlog.get_logger()
@@ -36,6 +37,14 @@ async def create_api_key(
         key_hash=generated.digest,
     )
     session.add(api_key)
+    await session.flush()
+    await audit.append(
+        session,
+        principal.tenant_id,
+        actor=f"user:{principal.user_id}",
+        action="api_key.created",
+        details={"api_key_id": str(api_key.id), "prefix": api_key.prefix},
+    )
     await session.commit()
     await session.refresh(api_key)
     log.info("api_key_created", api_key_id=str(api_key.id), tenant_id=str(principal.tenant_id))
@@ -48,6 +57,13 @@ async def revoke_api_key(session: AsyncSession, principal: Principal, key_id: uu
         raise NotFoundError
     if api_key.revoked_at is None:
         api_key.revoked_at = datetime.now(UTC)
+        await audit.append(
+            session,
+            principal.tenant_id,
+            actor=f"user:{principal.user_id}",
+            action="api_key.revoked",
+            details={"api_key_id": str(key_id)},
+        )
         await session.commit()
         log.info("api_key_revoked", api_key_id=str(key_id), tenant_id=str(principal.tenant_id))
 
@@ -65,6 +81,13 @@ async def set_policy(
     await repo.upsert_policy(
         session, principal.tenant_id, [pii_type.value for pii_type in normalised]
     )
+    await audit.append(
+        session,
+        principal.tenant_id,
+        actor=f"user:{principal.user_id}",
+        action="policy.updated",
+        details={"enabled_types": [pii_type.value for pii_type in normalised]},
+    )
     await session.commit()
     log.info(
         "policy_updated",
@@ -72,3 +95,16 @@ async def set_policy(
         enabled=[pii_type.value for pii_type in normalised],
     )
     return normalised
+
+
+async def list_usage(
+    session: AsyncSession, principal: Principal, days: int
+) -> Sequence[UsageDaily]:
+    since = (datetime.now(UTC) - timedelta(days=days - 1)).date()
+    return await repo.list_usage(session, principal.tenant_id, since)
+
+
+async def list_requests(
+    session: AsyncSession, principal: Principal, limit: int
+) -> Sequence[RequestLog]:
+    return await repo.list_requests(session, principal.tenant_id, limit)

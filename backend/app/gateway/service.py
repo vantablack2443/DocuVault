@@ -7,12 +7,12 @@ import uuid
 from collections import Counter
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import structlog
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.auth.service import ApiKeyPrincipal
 from app.core.config import Settings
 from app.db import repositories as repo
 from app.db.models import RequestLog
@@ -21,8 +21,9 @@ from app.gateway.failover import ProviderChain
 from app.gateway.providers import Completion, Message, ProviderError, ReplayProvider
 from app.gateway.rehydrator import StreamRehydrator
 from app.gateway.schemas import ChatCompletionRequest
+from app.jobs.events import EventBus
 from app.ratelimit.token_bucket import TokenBucket
-from app.redaction.engine import PlaceholderVault, RedactionEngine
+from app.redaction.engine import Entity, PlaceholderVault, RedactionEngine
 from app.redaction.types import PiiType
 
 log = structlog.get_logger()
@@ -39,11 +40,22 @@ _CACHED_STREAM_PIECE = 24
 
 
 @dataclass(frozen=True, slots=True)
+class Caller:
+    """Who is calling: an API key (gateway) or a signed-in user (playground)."""
+
+    tenant_id: uuid.UUID
+    api_key_id: uuid.UUID | None
+    actor: str
+    rate_key: str
+
+
+@dataclass(frozen=True, slots=True)
 class GatewayDeps:
     engine: RedactionEngine
     chain: ProviderChain
     redis: Redis
     bucket: TokenBucket
+    bus: EventBus
     session_factory: async_sessionmaker[AsyncSession]
     settings: Settings
 
@@ -60,6 +72,8 @@ class Prepared:
     messages: list[Message]
     vault: PlaceholderVault
     counts: dict[str, int]
+    # Per message, in request order: where each value was found.
+    entities: list[tuple[Entity, ...]]
     cache_key: str
     temperature: float | None
     max_tokens: int | None
@@ -84,7 +98,7 @@ class StreamResult:
 
 def _redact_all(
     engine: RedactionEngine, body: ChatCompletionRequest, enabled: list[PiiType] | None
-) -> tuple[list[Message], PlaceholderVault, dict[str, int]]:
+) -> tuple[list[Message], PlaceholderVault, dict[str, int], list[tuple[Entity, ...]]]:
     """One vault for the whole conversation: a value keeps its placeholder across turns.
 
     The vault lives only for this request. Clients resend the full history on
@@ -94,24 +108,26 @@ def _redact_all(
     vault = PlaceholderVault()
     counts: Counter[str] = Counter()
     messages: list[Message] = []
+    entities: list[tuple[Entity, ...]] = []
     for message in body.messages:
         result = engine.redact(message.content, vault=vault, enabled=enabled)
         counts.update(entity.type.value for entity in result.entities)
+        entities.append(result.entities)
         messages.append({"role": message.role, "content": result.text})
     if counts:
         messages.insert(0, {"role": "system", "content": PLACEHOLDER_INSTRUCTION})
-    return messages, vault, dict(counts)
+    return messages, vault, dict(counts), entities
 
 
-async def _prepare(
-    deps: GatewayDeps, principal: ApiKeyPrincipal, body: ChatCompletionRequest
-) -> Prepared:
+async def _prepare(deps: GatewayDeps, caller: Caller, body: ChatCompletionRequest) -> Prepared:
     started = time.perf_counter()
-    await deps.bucket.take(f"ratelimit:gateway:{principal.api_key_id}")
+    await deps.bucket.take(caller.rate_key)
     async with deps.session_factory() as session:
-        stored = await repo.get_enabled_types(session, principal.tenant_id)
+        stored = await repo.get_enabled_types(session, caller.tenant_id)
     enabled = None if stored is None else [PiiType(name) for name in stored]
-    messages, vault, counts = await asyncio.to_thread(_redact_all, deps.engine, body, enabled)
+    messages, vault, counts, entities = await asyncio.to_thread(
+        _redact_all, deps.engine, body, enabled
+    )
     return Prepared(
         id=f"chatcmpl-{uuid.uuid4().hex}",
         created=int(time.time()),
@@ -121,8 +137,9 @@ async def _prepare(
         messages=messages,
         vault=vault,
         counts=counts,
+        entities=entities,
         cache_key=cache.cache_key(
-            principal.tenant_id, body.model, messages, body.temperature, body.max_tokens
+            caller.tenant_id, body.model, messages, body.temperature, body.max_tokens
         ),
         temperature=body.temperature,
         max_tokens=body.max_tokens,
@@ -131,7 +148,7 @@ async def _prepare(
 
 async def _record(
     deps: GatewayDeps,
-    principal: ApiKeyPrincipal,
+    caller: Caller,
     prepared: Prepared,
     *,
     provider: str,
@@ -145,8 +162,8 @@ async def _record(
         async with deps.session_factory() as session:
             session.add(
                 RequestLog(
-                    tenant_id=principal.tenant_id,
-                    api_key_id=principal.api_key_id,
+                    tenant_id=caller.tenant_id,
+                    api_key_id=caller.api_key_id,
                     model=prepared.model,
                     provider=provider,
                     status=status,
@@ -161,6 +178,24 @@ async def _record(
             await session.commit()
     except Exception:
         log.exception("request_log_failed")
+    try:
+        # Audit entry and usage counters are written by the stream consumer.
+        await deps.bus.publish(
+            {
+                "tenant_id": str(caller.tenant_id),
+                "actor": caller.actor,
+                "provider": provider,
+                "status": status,
+                "cache_hit": "1" if cache_hit else "0",
+                "stream": "1" if prepared.stream else "0",
+                "redactions": json.dumps(prepared.counts),
+                "prompt_tokens": str(completion.prompt_tokens),
+                "completion_tokens": str(completion.completion_tokens),
+                "day": datetime.now(UTC).date().isoformat(),
+            }
+        )
+    except Exception:
+        log.exception("event_publish_failed")
     log.info(
         "gateway_request",
         provider=provider,
@@ -177,10 +212,8 @@ def _cacheable(provider: str) -> bool:
     return provider != ReplayProvider.name
 
 
-async def complete(
-    deps: GatewayDeps, principal: ApiKeyPrincipal, body: ChatCompletionRequest
-) -> ChatResult:
-    prepared = await _prepare(deps, principal, body)
+async def complete(deps: GatewayDeps, caller: Caller, body: ChatCompletionRequest) -> ChatResult:
+    prepared = await _prepare(deps, caller, body)
     cached = await cache.get(deps.redis, prepared.cache_key)
     if cached is not None:
         provider, completion = cached
@@ -198,7 +231,7 @@ async def complete(
             )
     await _record(
         deps,
-        principal,
+        caller,
         prepared,
         provider=provider,
         status="ok",
@@ -237,7 +270,7 @@ async def _replay_cached(text: str) -> AsyncIterator[str]:
 
 async def _events(
     deps: GatewayDeps,
-    principal: ApiKeyPrincipal,
+    caller: Caller,
     prepared: Prepared,
     provider: str,
     deltas: AsyncIterator[str],
@@ -272,7 +305,7 @@ async def _events(
         )
     await _record(
         deps,
-        principal,
+        caller,
         prepared,
         provider=provider,
         status=status,
@@ -282,14 +315,14 @@ async def _events(
 
 
 async def open_stream(
-    deps: GatewayDeps, principal: ApiKeyPrincipal, body: ChatCompletionRequest
+    deps: GatewayDeps, caller: Caller, body: ChatCompletionRequest
 ) -> StreamResult:
     """Resolve provider (with failover) before the response starts, then stream.
 
     Everything that can still turn into an HTTP error (rate limit, all providers
     down) happens here, before the first byte is sent.
     """
-    prepared = await _prepare(deps, principal, body)
+    prepared = await _prepare(deps, caller, body)
     hit = await cache.get(deps.redis, prepared.cache_key)
     if hit is not None:
         provider, cached = hit
@@ -303,5 +336,5 @@ async def open_stream(
         prepared=prepared,
         provider=provider,
         cache_hit=cached is not None,
-        events=_events(deps, principal, prepared, provider, deltas, cached),
+        events=_events(deps, caller, prepared, provider, deltas, cached),
     )
