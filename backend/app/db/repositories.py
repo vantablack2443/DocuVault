@@ -4,10 +4,11 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ApiKey, RefreshToken, Tenant, User
+from app.db.models import ApiKey, Policy, RefreshToken, Tenant, User
 
 # --- users and tenants -------------------------------------------------------
 
@@ -92,3 +93,26 @@ async def get_api_key_with_tenant_by_prefix(
         )
     ).one_or_none()
     return (row[0], row[1]) if row else None
+
+
+# --- policies ----------------------------------------------------------------
+
+
+async def get_enabled_types(session: AsyncSession, tenant_id: uuid.UUID) -> list[str] | None:
+    """`None` means the tenant has no policy row and every PII type is redacted."""
+    result = await session.execute(
+        select(Policy.enabled_types).where(Policy.tenant_id == tenant_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_policy(
+    session: AsyncSession, tenant_id: uuid.UUID, enabled_types: list[str]
+) -> None:
+    statement = insert(Policy).values(tenant_id=tenant_id, enabled_types=enabled_types)
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[Policy.tenant_id],
+            set_={"enabled_types": enabled_types, "updated_at": func.now()},
+        )
+    )

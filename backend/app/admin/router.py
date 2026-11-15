@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from app.admin import service
-from app.admin.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, UserOut
+from app.admin.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, PolicyBody, UserOut
 from app.auth.dependencies import require_roles
 from app.auth.schemas import ErrorResponse
 from app.auth.service import Principal
@@ -57,3 +57,14 @@ async def create_api_key(
 )
 async def revoke_api_key(key_id: uuid.UUID, principal: Admin, session: SessionDep) -> None:
     await service.revoke_api_key(session, principal, key_id)
+
+
+@router.get("/policy", response_model=PolicyBody, summary="Which PII types my tenant redacts")
+async def get_policy(principal: Reader, session: SessionDep) -> PolicyBody:
+    return PolicyBody(enabled_types=await service.get_policy(session, principal))
+
+
+@router.put("/policy", response_model=PolicyBody, summary="Change which PII types are redacted")
+async def set_policy(body: PolicyBody, principal: Admin, session: SessionDep) -> PolicyBody:
+    enabled = await service.set_policy(session, principal, body.enabled_types)
+    return PolicyBody(enabled_types=enabled)

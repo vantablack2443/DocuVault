@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import Role
+from app.redaction.types import PiiType
 
 
 class UserOut(BaseModel):
@@ -33,3 +34,9 @@ class ApiKeyOut(BaseModel):
 
 class ApiKeyCreated(ApiKeyOut):
     key: str = Field(description="Full secret. Shown exactly once; only a digest is stored.")
+
+
+class PolicyBody(BaseModel):
+    enabled_types: list[PiiType] = Field(
+        description="PII types this tenant redacts. Everything else passes through unchanged."
+    )

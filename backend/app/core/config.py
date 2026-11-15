@@ -27,6 +27,26 @@ class Settings(BaseSettings):
     guest_tenant_ttl_minutes: int = 60
     guest_logins_per_hour: int = 10
 
+    # Names and places need the spaCy model; formats with checksums work without it.
+    ner_enabled: bool = True
+
+    # Upstream LLMs (both speak the OpenAI wire format). Without keys, or with
+    # LLM_MODE=replay, the gateway answers from the deterministic replay provider.
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    provider_timeout_seconds: float = 30.0
+    breaker_failure_threshold: int = 3
+    breaker_cooldown_seconds: float = 30.0
+
+    cache_ttl_seconds: int = 3600
+    # Token bucket per API key: burst of `capacity`, then `refill` requests per second.
+    rate_limit_capacity: int = 20
+    rate_limit_refill_per_second: float = 0.5
+
     seed_admin_email: str | None = None
     seed_admin_password: SecretStr | None = None
 

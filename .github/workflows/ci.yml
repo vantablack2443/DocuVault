@@ -50,6 +50,8 @@ jobs:
       - name: Models and migrations agree
         run: uv run alembic check
       - run: uv run pytest
+      - name: Redaction benchmark (fails below benchmark/thresholds.json)
+        run: uv run python -m benchmark --check | tee -a "$GITHUB_STEP_SUMMARY"
 
   image:
     runs-on: ubuntu-latest

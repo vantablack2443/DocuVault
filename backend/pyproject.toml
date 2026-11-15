@@ -15,6 +15,9 @@ dependencies = [
     "httpx>=0.27",
     "pyjwt>=2.10",
     "argon2-cffi>=23.1",
+    "spacy>=3.8,<3.9",
+    # Small German pipeline (about 15 MB). Larger or transformer models break the memory budget.
+    "de-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl",
 ]
 
 [dependency-groups]
@@ -36,17 +39,21 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
+# RUF001/RUF003: names such as "Yılmaz" are data, not typos.
+ignore = ["RUF001", "RUF003"]
 
 [tool.ruff.lint.isort]
 # The local `alembic/` migrations folder would otherwise shadow the library.
 known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S105", "S106"]
+"tests/*" = ["S101", "S105", "S106", "E501"]
+# Natural-language sentence templates are kept on one line each.
+"benchmark/corpus.py" = ["E501"]
 
 [tool.mypy]
 strict = true
-files = ["app", "tests"]
+files = ["app", "tests", "benchmark"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

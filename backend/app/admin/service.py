@@ -10,6 +10,7 @@ from app.core import security
 from app.core.errors import NotFoundError
 from app.db import repositories as repo
 from app.db.models import ApiKey, User
+from app.redaction.types import PiiType
 
 log = structlog.get_logger()
 
@@ -49,3 +50,25 @@ async def revoke_api_key(session: AsyncSession, principal: Principal, key_id: uu
         api_key.revoked_at = datetime.now(UTC)
         await session.commit()
         log.info("api_key_revoked", api_key_id=str(key_id), tenant_id=str(principal.tenant_id))
+
+
+async def get_policy(session: AsyncSession, principal: Principal) -> list[PiiType]:
+    stored = await repo.get_enabled_types(session, principal.tenant_id)
+    return list(PiiType) if stored is None else [PiiType(name) for name in stored]
+
+
+async def set_policy(
+    session: AsyncSession, principal: Principal, enabled_types: Sequence[PiiType]
+) -> list[PiiType]:
+    # Stored in enum order and without duplicates, whatever the client sent.
+    normalised = [pii_type for pii_type in PiiType if pii_type in set(enabled_types)]
+    await repo.upsert_policy(
+        session, principal.tenant_id, [pii_type.value for pii_type in normalised]
+    )
+    await session.commit()
+    log.info(
+        "policy_updated",
+        tenant_id=str(principal.tenant_id),
+        enabled=[pii_type.value for pii_type in normalised],
+    )
+    return normalised

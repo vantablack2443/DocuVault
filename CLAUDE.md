@@ -3,7 +3,7 @@
 OpenAI-compatible LLM gateway that redacts German PII before prompts leave the
 network, re-hydrates responses, and keeps a tamper-evident audit log.
 
-The full phased plan lives in `docs/PLAN.md`. Current phase: **1 (auth and tenancy) done, 2 (redaction engine and benchmark) next**.
+The full phased plan lives in `docs/PLAN.md`. Current phase: **3 (gateway) done, 4 (audit, jobs, dashboard) next**.
 
 ## Hard rules
 
@@ -54,8 +54,10 @@ backend/app/db/        models, session dependency, repositories (all SQL)
 backend/app/api/       health probes
 backend/app/auth/      login, refresh, guest sandbox, RBAC dependencies
 backend/app/admin/     users and API keys
-backend/app/gateway/   OpenAI-compatible /v1 endpoints (API-key auth)
+backend/app/gateway/   /v1 endpoints, pipeline (service.py), providers, failover, cache, stream re-hydrator
 backend/app/ratelimit/ Redis rate limiting
+backend/app/redaction/ detectors, NER, engine, placeholder vault, preview endpoint
+backend/benchmark/     synthetic corpus, scorer, thresholds (`python -m benchmark --check`)
 backend/app/seed.py    local admin seed
 backend/alembic/    migrations
 backend/tests/      pytest (needs Postgres + Redis from compose or CI services)
@@ -70,4 +72,6 @@ docs/adr/           architecture decision records
 - Auth: humans use JWT access tokens (`PrincipalDep`, `require_roles(...)`); machines use `dv_…` API keys (`ApiKeyPrincipalDep`). Roles: admin, member, auditor. Guest access is a sandbox tenant (ADR 0001).
 - Services raise domain errors from `app/core/errors.py`; `app/main.py` maps them to HTTP. Services commit; repositories never do.
 - `alembic check` runs in CI: models and migrations must agree.
+- Redaction: never tune detectors on `HELD_OUT_TEMPLATES`. Leak rate is the gate that matters; a precision gain that raises it is a regression. NER memory rules are in ADR 0002.
+- Gateway: the placeholder vault is per request and never persisted (ADR 0003). Providers and the cache only ever see redacted text. Tests use `tests/fakes.py::FakeProvider`; no test may call a real LLM.
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).

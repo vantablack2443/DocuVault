@@ -3,6 +3,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
+import httpx
 import structlog
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -21,6 +22,10 @@ from app.core.errors import (
 )
 from app.core.logging import configure_logging
 from app.gateway import router as gateway_router
+from app.gateway.failover import AllProvidersFailedError, build_chain
+from app.ratelimit.token_bucket import TokenBucket
+from app.redaction import router as redaction_router
+from app.redaction.engine import build_engine
 
 log = structlog.get_logger()
 
@@ -35,10 +40,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     app.state.redis = redis
+    app.state.redaction_engine = build_engine(use_ner=settings.ner_enabled)
+    http = httpx.AsyncClient(timeout=httpx.Timeout(settings.provider_timeout_seconds, connect=5.0))
+    app.state.settings = settings
+    app.state.provider_chain = build_chain(settings, http)
+    app.state.token_bucket = TokenBucket(
+        redis,
+        capacity=settings.rate_limit_capacity,
+        refill_per_second=settings.rate_limit_refill_per_second,
+    )
     log.info("startup", environment=settings.environment, llm_mode=settings.llm_mode)
     try:
         yield
     finally:
+        await http.aclose()
         await redis.aclose()
         await engine.dispose()
         log.info("shutdown")
@@ -79,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.router)
     app.include_router(admin_router.router)
     app.include_router(gateway_router.router)
+    app.include_router(redaction_router.router)
     return app
 
 
@@ -100,6 +116,12 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(NotFoundError)
     async def not_found(_: Request, __: NotFoundError) -> JSONResponse:
         return JSONResponse({"detail": "Not found"}, status_code=status.HTTP_404_NOT_FOUND)
+
+    @app.exception_handler(AllProvidersFailedError)
+    async def upstream_unavailable(_: Request, __: AllProvidersFailedError) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "No upstream provider available"}, status_code=status.HTTP_502_BAD_GATEWAY
+        )
 
     @app.exception_handler(RateLimitedError)
     async def rate_limited(_: Request, error: RateLimitedError) -> JSONResponse:
