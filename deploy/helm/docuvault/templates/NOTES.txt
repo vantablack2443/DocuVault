@@ -1,0 +1,4 @@
+DocuVault is starting. The first start takes about a minute (migrations, language model).
+
+  kubectl port-forward svc/{{ include "docuvault.name" . }} 8000:{{ .Values.service.port }}
+  curl http://localhost:8000/readyz

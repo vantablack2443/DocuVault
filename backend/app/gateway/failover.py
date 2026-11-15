@@ -72,10 +72,16 @@ class ProviderChain:
         self._entries = [(provider, breaker_factory()) for provider in providers]
 
     async def complete(
-        self, messages: list[Message], *, temperature: float | None, max_tokens: int | None
+        self,
+        messages: list[Message],
+        *,
+        temperature: float | None,
+        max_tokens: int | None,
+        only: str | None = None,
     ) -> tuple[str, Completion]:
+        """`only` restricts the attempt to the provider with that name."""
         for provider, breaker in self._entries:
-            if not breaker.allow():
+            if (only is not None and provider.name != only) or not breaker.allow():
                 continue
             try:
                 completion = await provider.complete(
@@ -90,7 +96,12 @@ class ProviderChain:
         raise AllProvidersFailedError
 
     async def stream(
-        self, messages: list[Message], *, temperature: float | None, max_tokens: int | None
+        self,
+        messages: list[Message],
+        *,
+        temperature: float | None,
+        max_tokens: int | None,
+        only: str | None = None,
     ) -> tuple[str, AsyncIterator[str]]:
         """Fail over only until the first chunk arrives.
 
@@ -98,7 +109,7 @@ class ProviderChain:
         later error ends that stream instead of restarting on another provider.
         """
         for provider, breaker in self._entries:
-            if not breaker.allow():
+            if (only is not None and provider.name != only) or not breaker.allow():
                 continue
             iterator = provider.stream(
                 messages, temperature=temperature, max_tokens=max_tokens

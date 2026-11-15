@@ -3,7 +3,7 @@
 OpenAI-compatible LLM gateway that redacts German PII before prompts leave the
 network, re-hydrates responses, and keeps a tamper-evident audit log.
 
-The full phased plan lives in `docs/PLAN.md`. Current phase: **4 backend (audit log, stream consumer, usage, playground API) done; 4 frontend (React dashboard in `web/`) next; then 5 (ship)**.
+The full phased plan lives in `docs/PLAN.md`. Current phase: **5 built locally (hardening, Helm chart, workflows, deploy config); actual deployment and first CI run are open (`docs/DEPLOY.md`). Stretch items not started.**
 
 ## Hard rules
 
@@ -29,9 +29,11 @@ redis-py (asyncio), structlog, httpx. Dependencies managed with `uv`
 The host does not need Python or `uv`; everything runs in containers.
 
 ```bash
-docker compose up --build                     # API on http://localhost:8000, docs at /docs
+docker compose up --build                     # API on :8000 (docs at /docs), dashboard on :5173
 docker compose --profile test run --rm test   # ruff, mypy, pytest with coverage
 docker compose down -v                        # stop and wipe volumes
+cd web && npm run check && npm test && npm run build   # dashboard: typecheck, unit tests, build
+cd web && npm run dev                         # dashboard with hot reload (needs Node 20)
 ```
 
 Regenerate the lockfile after editing dependencies:
@@ -63,6 +65,9 @@ backend/benchmark/     synthetic corpus, scorer, thresholds (`python -m benchmar
 backend/app/seed.py    local admin seed
 backend/alembic/    migrations
 backend/tests/      pytest (needs Postgres + Redis from compose or CI services)
+web/                React dashboard (Vite, TypeScript): `src/api.ts` client, `src/text.ts` pure helpers, `src/views/`
+deploy/helm/        Helm chart (`values-kind.yaml` for the CI smoke test)
+render.yaml         Render blueprint; docs/DEPLOY.md has the steps and free-tier limits
 docs/adr/           architecture decision records
 ```
 
@@ -79,3 +84,8 @@ docs/adr/           architecture decision records
 - Audit: call `audit.append(...)` inside the transaction of the change it describes, before the commit. `details` takes ids, counts and enum values only. Never UPDATE or DELETE `audit_log` (ADR 0004).
 - Tests share one persistent database: use unique ids and e-mails, never fixed ones. After `session.rollback()` reload objects before reading attributes.
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).
+- Dashboard: no UI or chart library, no font CDN (fonts are bundled). Pure logic goes in `web/src/text.ts` with a Vitest test. UI copy follows hard rule 9: no "never leaks" claims.
+- Metrics labels: route templates and enum values only. Never tenant ids, raw paths or anything from request content.
+- Client address for rate limits: always `app.core.network.client_ip`, never `request.client.host` directly.
+- Guest tenants: any new code path that calls a live provider must go through `gateway.service._restriction` (daily guest budget).
+- Helm chart check without local tools: `docker run --rm -v "$PWD/deploy/helm:/charts" -w /charts alpine/helm:3.17.3 lint docuvault -f docuvault/values-kind.yaml`

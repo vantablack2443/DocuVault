@@ -1,0 +1,70 @@
+name: k8s-smoke
+
+# Installs the Helm chart on a throwaway kind cluster inside the CI runner and
+# talks to the running pod. Proves the manifests work without paying for a
+# managed cluster.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/k8s-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: |
+          helm lint deploy/helm/docuvault --set existingSecret=placeholder
+          helm lint deploy/helm/docuvault -f deploy/helm/docuvault/values-kind.yaml
+
+      - name: Build image
+        run: docker build --target runtime -t docuvault-api:ci backend
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: docuvault
+
+      - name: Load image into the cluster
+        run: kind load docker-image docuvault-api:ci --name docuvault
+
+      - name: Install chart
+        run: |
+          helm install docuvault deploy/helm/docuvault \
+            -f deploy/helm/docuvault/values-kind.yaml \
+            --wait --timeout 6m
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/docuvault 8000:80 >/dev/null &
+          for attempt in $(seq 1 20); do
+            curl -sf localhost:8000/healthz >/dev/null && break
+            sleep 1
+          done
+          curl -sf localhost:8000/readyz
+          token=$(curl -sf -X POST localhost:8000/auth/guest | jq -r .access_token)
+          answer=$(curl -sf -X POST localhost:8000/playground/chat \
+            -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+            -d '{"message": "Frau Schmidt, IBAN DE89 3704 0044 0532 0130 00"}')
+          echo "$answer" | jq .
+          # The IBAN must not appear in what went upstream.
+          echo "$answer" | jq -e '.sent_upstream | contains("<IBAN_1>") and (contains("DE89") | not)'
+          curl -sf localhost:8000/audit/verify -H "Authorization: Bearer $token" | jq -e '.valid'
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl describe pods -l app.kubernetes.io/component=api | tail -40
+          kubectl logs -l app.kubernetes.io/component=api --all-containers --tail=80

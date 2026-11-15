@@ -17,6 +17,7 @@ from app.admin import router as admin_router
 from app.api import health
 from app.audit import router as audit_router
 from app.auth import router as auth_router
+from app.core import metrics
 from app.core.config import get_settings
 from app.core.errors import (
     AuthenticationError,
@@ -96,12 +97,17 @@ def create_app() -> FastAPI:
         started = time.perf_counter()
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
+        elapsed = time.perf_counter() - started
+        # The route template, not the raw path: ids in paths would explode the label set.
+        route = getattr(request.scope.get("route"), "path", metrics.UNMATCHED_ROUTE)
+        metrics.HTTP_REQUESTS.labels(request.method, route, str(response.status_code)).inc()
+        metrics.HTTP_DURATION.labels(route).observe(elapsed)
         log.info(
             "request",
             method=request.method,
             path=request.url.path,
             status=response.status_code,
-            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+            duration_ms=round(elapsed * 1000, 2),
         )
         return response
 

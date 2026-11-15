@@ -93,6 +93,8 @@ Placeholder-to-original mappings live only in Redis with a short TTL, encrypted,
 
 Confirm current limits: Neon storage (believed 0.5 GB per project), Upstash monthly command cap, Render sleep behaviour, Gemini and Groq free quotas.
 
+Checked 2026-11-15; results and sources in `docs/DEPLOY.md`.
+
 ## Verification
 
 - `docker compose up` from a clean clone gives a seeded, working app; guest login reaches the playground in under 30 seconds.

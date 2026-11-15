@@ -91,6 +91,7 @@ async def chat_completions(
         api_key_id=principal.api_key_id,
         actor=f"key:{principal.api_key_id}",
         rate_key=f"ratelimit:gateway:{principal.api_key_id}",
+        is_guest=principal.is_guest,
     )
     if body.stream:
         stream = await service.open_stream(deps, caller, body)
@@ -164,6 +165,7 @@ async def playground_chat(
         api_key_id=None,
         actor=f"user:{principal.user_id}",
         rate_key=f"ratelimit:playground:{principal.user_id}",
+        is_guest=principal.is_guest,
     )
     chat = ChatCompletionRequest(messages=[ChatMessage(role="user", content=body.message)])
     result = await service.complete(_deps(request), caller, chat)

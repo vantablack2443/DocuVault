@@ -1,0 +1,16 @@
+# Used by the CI smoke test on a kind cluster. Nothing here is a real secret.
+image:
+  repository: docuvault-api
+  tag: ci
+  pullPolicy: Never   # the image is loaded into the kind node, not pulled
+
+config:
+  ENVIRONMENT: test
+
+secrets:
+  DATABASE_URL: postgresql+asyncpg://docuvault:docuvault@docuvault-postgres:5432/docuvault
+  REDIS_URL: redis://docuvault-redis:6379/0
+  JWT_SECRET: kind-smoke-test-only-0123456789abcdef
+
+devDependencies:
+  enabled: true

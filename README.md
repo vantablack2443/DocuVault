@@ -3,9 +3,35 @@
 OpenAI-compatible LLM gateway that minimises German PII before prompts reach an
 external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
-> **Status: Phase 4 of 5, backend half.** Gateway, redaction, hash-chained audit log,
-> usage aggregation through a Redis Stream consumer, playground API.
-> Dashboard UI and public deployment are still to come. Roadmap: [docs/PLAN.md](docs/PLAN.md).
+> **Status:** all five phases are built and tested locally. Not deployed yet and CI has
+> not run yet (the repository has no remote so far). Steps: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+```mermaid
+flowchart LR
+    app["Your application<br/>(any OpenAI client)"] -->|"dv_… API key"| gw
+    dash["Dashboard<br/>(React, static)"] -->|JWT| gw
+
+    subgraph docuvault["DocuVault API (FastAPI, one container)"]
+        gw["Rate limit"] --> red["Redact<br/>checksums · patterns · spaCy"]
+        red --> cache{"Cached?"}
+        cache -->|no| chain["Provider chain<br/>with circuit breaker"]
+        chain --> rehyd["Re-hydrate<br/>(also mid-stream)"]
+        cache -->|yes| rehyd
+        consumer["Stream consumer"]
+    end
+
+    chain -->|"placeholders only"| gemini["Gemini"]
+    chain -.->|fallback| groq["Groq"]
+    chain -.->|fallback| replay["Recorded answer"]
+
+    gw <--> redis[("Redis<br/>token bucket · cache · stream")]
+    rehyd -->|"metadata event"| redis
+    redis --> consumer
+    consumer --> pg[("PostgreSQL<br/>hash-chained audit log · usage")]
+```
+
+Real values exist only in memory for the duration of one request. Providers, the
+cache, the logs and the database see placeholders and counts.
 
 ## Run locally
 
@@ -13,6 +39,7 @@ external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 docker compose up --build
 ```
 
+- Dashboard: http://localhost:5173 ("Try the live demo" opens a guest sandbox)
 - API: http://localhost:8000
 - OpenAPI docs: http://localhost:8000/docs
 - Liveness / readiness: `/healthz`, `/readyz`
@@ -108,7 +135,58 @@ How to read this:
 docker compose --profile test run --rm test python -m benchmark
 ```
 
+## Kubernetes
+
+A Helm chart lives in `deploy/helm/docuvault`. The `k8s-smoke` workflow installs it on a
+[kind](https://kind.sigs.k8s.io/) cluster inside the CI runner, waits for the pod and
+sends a request through it, so the manifests are exercised without a paid cluster.
+
+```bash
+helm install docuvault deploy/helm/docuvault --set existingSecret=docuvault-env
+```
+
+The pod runs as a non-root user with a read-only root filesystem and no Linux
+capabilities; migrations run in an init container; `/healthz` and `/readyz` back the
+probes. The chart is fixed at one replica: the stream consumer lives inside the API
+process ([ADR 0004](docs/adr/0004-audit-chain-and-event-consumer.md)).
+
+## Operations
+
+- **Logs:** JSON, one line per request, with a request id (`X-Request-ID`). No prompt
+  text, only placeholders, ids and counts.
+- **Metrics:** `GET /metrics` in Prometheus format (request counts and durations by
+  route, gateway calls by provider and cache use, redactions by type). Off unless
+  `METRICS_TOKEN` is set; then it needs that token as a bearer token. Locally:
+  `curl -H "Authorization: Bearer local-metrics-token" localhost:8000/metrics`
+- **Guest budget:** all guest sandboxes share a daily number of live LLM calls
+  (`GUEST_DAILY_LLM_CALLS`). Beyond it they get the recorded answer.
+- **Behind a proxy:** set `TRUSTED_PROXY_HOPS` so rate limits count visitors, not the proxy.
+
+## Limitations
+
+- **Detection is not complete.** On the held-out benchmark 3.69 % of PII characters
+  stay unredacted. This is PII minimisation, not a guarantee, and not a statement
+  about legal compliance.
+- **The audit chain shows edits, not a full rewrite.** Someone who can rewrite every
+  entry and recompute all fingerprints is not detected; that needs an anchor outside
+  the database.
+- **One container.** The consumer and the circuit breaker keep state in the process.
+  Running several replicas needs a separate worker first.
+- **A dropped event is lost.** An event that cannot be processed is logged and
+  skipped, not retried.
+- **A stream cut off by the client leaves no request row.**
+- **Free-tier providers may use submitted text to improve their products.** They
+  receive placeholders, plus whatever detection missed.
+- **Cold starts.** On the free host the first request after a quiet period waits up
+  to a minute.
+- **Not yet verified:** real Gemini and Groq calls (tests use a fake provider and the
+  recording), the GitHub workflows, and the `kind` install. The chart passes
+  `helm lint` and schema validation, and the image was run read-only locally.
+- **Not built:** document search with `pgvector` (the extension is installed, nothing
+  uses it yet), tracing, dashboards for the metrics.
+
 ## Stack
 
 Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · PostgreSQL 17 + pgvector ·
-Redis 7 · spaCy · structlog · Docker · GitHub Actions
+Redis 7 · spaCy · structlog · Prometheus client · React + TypeScript (Vite) ·
+Docker · Helm · kind · GitHub Actions

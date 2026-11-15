@@ -13,10 +13,11 @@ import structlog
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import metrics
 from app.core.config import Settings
 from app.db import repositories as repo
 from app.db.models import RequestLog
-from app.gateway import cache
+from app.gateway import budget, cache
 from app.gateway.failover import ProviderChain
 from app.gateway.providers import Completion, Message, ProviderError, ReplayProvider
 from app.gateway.rehydrator import StreamRehydrator
@@ -47,6 +48,7 @@ class Caller:
     api_key_id: uuid.UUID | None
     actor: str
     rate_key: str
+    is_guest: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +159,10 @@ async def _record(
     completion: Completion,
 ) -> None:
     """Persist metadata only. A logging failure must never break the response."""
+    metrics.GATEWAY_REQUESTS.labels(provider, status, "hit" if cache_hit else "miss").inc()
+    if not cache_hit:  # a cache hit redacts too, but is counted once per distinct upstream call
+        for pii_type, count in prepared.counts.items():
+            metrics.REDACTIONS.labels(pii_type).inc(count)
     latency_ms = int((time.perf_counter() - prepared.started) * 1000)
     try:
         async with deps.session_factory() as session:
@@ -207,6 +213,16 @@ async def _record(
     )
 
 
+async def _restriction(deps: GatewayDeps, caller: Caller) -> str | None:
+    """Guests share a daily allowance of live LLM calls; beyond it they get replay."""
+    if not caller.is_guest or deps.settings.llm_mode != "live":
+        return None
+    if await budget.spend(deps.redis, deps.settings.guest_daily_llm_calls):
+        return None
+    metrics.GUEST_BUDGET_EXHAUSTED.inc()
+    return ReplayProvider.name
+
+
 def _cacheable(provider: str) -> bool:
     # Replay answers are free and deterministic; caching them only spends Redis commands.
     return provider != ReplayProvider.name
@@ -219,7 +235,10 @@ async def complete(deps: GatewayDeps, caller: Caller, body: ChatCompletionReques
         provider, completion = cached
     else:
         provider, completion = await deps.chain.complete(
-            prepared.messages, temperature=prepared.temperature, max_tokens=prepared.max_tokens
+            prepared.messages,
+            temperature=prepared.temperature,
+            max_tokens=prepared.max_tokens,
+            only=await _restriction(deps, caller),
         )
         if _cacheable(provider):
             await cache.put(
@@ -330,7 +349,10 @@ async def open_stream(
     else:
         cached = None
         provider, deltas = await deps.chain.stream(
-            prepared.messages, temperature=prepared.temperature, max_tokens=prepared.max_tokens
+            prepared.messages,
+            temperature=prepared.temperature,
+            max_tokens=prepared.max_tokens,
+            only=await _restriction(deps, caller),
         )
     return StreamResult(
         prepared=prepared,

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: docuvault
+description: LLM gateway with German PII minimisation before external LLM calls
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

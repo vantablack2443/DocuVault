@@ -11,6 +11,7 @@ from app.auth.schemas import (
 )
 from app.auth.service import IssuedTokens
 from app.core.config import SettingsDep
+from app.core.network import client_ip
 from app.db.session import SessionDep
 
 router = APIRouter(
@@ -55,9 +56,11 @@ async def logout(body: RefreshRequest, session: SessionDep) -> None:
 )
 async def guest(request: Request, session: SessionDep, settings: SettingsDep) -> TokenResponse:
     """Creates an isolated sandbox tenant that deletes itself after it expires."""
-    client_ip = request.client.host if request.client else "unknown"
     tokens = await service.guest_login(
-        session, request.app.state.redis, settings, client_ip=client_ip
+        session,
+        request.app.state.redis,
+        settings,
+        client_ip=client_ip(request, settings.trusted_proxy_hops),
     )
     return _token_response(tokens)
 

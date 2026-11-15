@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Annotated, Literal, Self
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends
 from pydantic import SecretStr, field_validator, model_validator
@@ -26,6 +27,12 @@ class Settings(BaseSettings):
 
     guest_tenant_ttl_minutes: int = 60
     guest_logins_per_hour: int = 10
+    # Live LLM calls per UTC day shared by all guest sandboxes; beyond it guests get replay.
+    guest_daily_llm_calls: int = 200
+    # Reverse proxies in front of the app that append to X-Forwarded-For (0 = ignore header).
+    trusted_proxy_hops: int = 0
+    # /metrics answers only with this bearer token; unset means the endpoint is off.
+    metrics_token: SecretStr | None = None
 
     # Names and places need the spaCy model; formats with checksums work without it.
     ner_enabled: bool = True
@@ -33,10 +40,10 @@ class Settings(BaseSettings):
     # Upstream LLMs (both speak the OpenAI wire format). Without keys, or with
     # LLM_MODE=replay, the gateway answers from the deterministic replay provider.
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     groq_api_key: SecretStr | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     provider_timeout_seconds: float = 30.0
     breaker_failure_threshold: int = 3
@@ -58,11 +65,22 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def use_asyncpg_driver(cls, value: str) -> str:
-        """Hosted Postgres providers hand out `postgres://` URLs; SQLAlchemy needs the driver."""
+        """Accept the connection strings hosted Postgres providers hand out.
+
+        They use the `postgres://` scheme and libpq options. SQLAlchemy needs the
+        driver in the scheme, and asyncpg spells `sslmode` as `ssl` and rejects
+        `channel_binding`.
+        """
         for prefix in ("postgres://", "postgresql://"):
             if value.startswith(prefix):
-                return "postgresql+asyncpg://" + value[len(prefix) :]
-        return value
+                value = "postgresql+asyncpg://" + value[len(prefix) :]
+        parts = urlsplit(value)
+        options = [
+            ("ssl" if name == "sslmode" else name, option)
+            for name, option in parse_qsl(parts.query, keep_blank_values=True)
+            if name != "channel_binding"
+        ]
+        return urlunsplit(parts._replace(query=urlencode(options)))
 
     @model_validator(mode="after")
     def require_real_secret_in_production(self) -> Self:

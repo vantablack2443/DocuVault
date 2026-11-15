@@ -1,0 +1,42 @@
+image:
+  repository: docuvault-api
+  tag: ""          # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+# One replica on purpose: the stream consumer runs inside the API process and
+# its bookkeeping is exact for a single container (ADR 0004). The migration
+# init container relies on it too. Scaling out needs a separate worker first.
+service:
+  type: ClusterIP
+  port: 80
+
+# Non-secret settings, rendered into a ConfigMap.
+config:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+  LLM_MODE: replay
+  CORS_ORIGINS: '["http://localhost:5173"]'
+  TRUSTED_PROXY_HOPS: "0"
+
+# Secrets. Either point at a Secret you manage yourself (recommended) ...
+existingSecret: ""
+# ... or let the chart create one from these values (fine for a throwaway cluster).
+# Keys with an empty value are left out.
+secrets:
+  DATABASE_URL: ""
+  REDIS_URL: ""
+  JWT_SECRET: ""
+  GEMINI_API_KEY: ""
+  GROQ_API_KEY: ""
+  METRICS_TOKEN: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 320Mi
+  limits:
+    memory: 512Mi   # same ceiling as the free hosting tier the project targets
+
+# In-cluster Postgres and Redis without persistence. For smoke tests only.
+devDependencies:
+  enabled: false

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "docuvault.name" . }}
+  labels:
+    {{- include "docuvault.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # never two consumers or two migrations at once
+  selector:
+    matchLabels:
+      {{- include "docuvault.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "docuvault.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      annotations:
+        # Roll the pod when configuration changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: migrate
+          command: ["alembic", "upgrade", "head"]
+          {{- include "docuvault.containerBase" . | nindent 10 }}
+      containers:
+        - name: api
+          {{- include "docuvault.containerBase" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 8000
+          # Loading the language model takes a while; give it up to 2 minutes.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
