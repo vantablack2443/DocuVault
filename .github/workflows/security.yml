@@ -21,8 +21,8 @@ jobs:
     name: Known vulnerabilities in dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Python (pip-audit against the lockfile)
         working-directory: backend
         run: |
@@ -30,7 +30,7 @@ jobs:
           # The spaCy model is installed from a release URL and has no PyPI
           # advisory feed; pip-audit lists it as skipped.
           uvx pip-audit -r requirements.audit.txt --disable-pip --no-deps
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: JavaScript (npm audit, high and above)
@@ -41,7 +41,7 @@ jobs:
     name: Secrets in the git history
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # the whole history, not just the latest commit
       - name: gitleaks
@@ -53,7 +53,7 @@ jobs:
     name: Fixable flaws in the container image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build --target runtime -t docuvault-api:scan backend
       - name: Trivy (high and critical, only where a fix exists)
         run: |
@@ -72,7 +72,7 @@ jobs:
       matrix:
         language: [python, javascript-typescript]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
