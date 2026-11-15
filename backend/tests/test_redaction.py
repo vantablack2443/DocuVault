@@ -233,6 +233,31 @@ def test_ner_span_keeps_name_followed_by_colon(full: RedactionEngine) -> None:
 # --- memory behaviour of the statistical detector ----------------------------
 
 
+@pytest.mark.parametrize(
+    "verb", ["Schreibe", "Erstelle", "Prüfe", "Nenne", "Übersetze", "Beschreibe", "Plane", "Lies"]
+)
+def test_instruction_verb_opening_a_prompt_is_not_personal_data(
+    full: RedactionEngine, verb: str
+) -> None:
+    """Seen in the live demo: "Schreibe" was replaced by <LOCATION_1>."""
+    text = f"{verb} eine freundliche Absage an Frau Dr. Petra Hoffmann für den Termin in München."
+    result = found(full, text)
+    assert (PiiType.PERSON, "Petra Hoffmann") in result
+    assert (PiiType.LOCATION, "München") in result
+    assert verb not in {value for _, value in result}
+    # Also after an earlier sentence, not only at the very start.
+    later = found(full, f"Danke für die Hilfe. {verb} den Text für Herrn Weber.")
+    assert verb not in {value for _, value in later}
+
+
+def test_instruction_verb_filter_does_not_hide_names_or_places(full: RedactionEngine) -> None:
+    assert (PiiType.LOCATION, "Berlin") in found(full, "Berlin ist im Sommer schön.")
+    assert (PiiType.PERSON, "Anna") in found(full, "Anna kommt morgen aus Hamburg zurück.")
+    # A listed word that is not the first word of a sentence gets no special treatment,
+    # and a name directly after the verb survives.
+    assert (PiiType.PERSON, "Petra Hoffmann") in found(full, "Kontaktiere Petra Hoffmann morgen.")
+
+
 def test_chunks_cover_text_exactly_and_respect_the_limit() -> None:
     from app.redaction.ner import chunks
 

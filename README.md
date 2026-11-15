@@ -133,6 +133,11 @@ How to read this:
   (date before the keyword) is missed.
 - Low `POSTAL_CODE` and `LOCATION` precision means over-redaction of ordinary
   words ("57199 Exemplare"), not a leak.
+- The benchmark documents are messages, not instructions to a model. In prompts the
+  small language model takes many sentence-opening command verbs for a place or name
+  ("Schreibe …" became `<LOCATION_1>` in the live demo; 22 of 55 verbs in a probe). A
+  word list of common instruction verbs filters these out. Verbs outside the list are
+  still over-redacted: annoying, not a leak.
 - CI fails if any score drops below `backend/benchmark/thresholds.json`.
 
 ```bash

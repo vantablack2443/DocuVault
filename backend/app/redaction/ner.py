@@ -29,6 +29,74 @@ _NOISE_WORD = (
 )
 _LEADING_NOISE = re.compile(rf"(?:{_NOISE_WORD}\s+)+")
 _ONLY_NOISE = re.compile(_NOISE_WORD)
+# Prompts to a language model start with an instruction: "Schreibe eine Absage …".
+# The small model has no part-of-speech tagger loaded (ADR 0002) and takes many of
+# these capitalised verbs for a place or a person: 22 of 55 in a probe. A word list
+# is crude but safe: it only applies to the first word of a sentence, and none of
+# these words is a plausible name or town. Verbs not listed here are still mis-tagged.
+_INSTRUCTION_VERBS = frozenset(
+    {
+        "aktualisiere",
+        "analysiere",
+        "antworte",
+        "beantworte",
+        "berechne",
+        "beschreibe",
+        "bestätige",
+        "bewerte",
+        "bitte",
+        "buche",
+        "entscheide",
+        "entwirf",
+        "ergänze",
+        "erinnere",
+        "erkläre",
+        "erstelle",
+        "erzeuge",
+        "extrahiere",
+        "fasse",
+        "finde",
+        "formuliere",
+        "generiere",
+        "gib",
+        "hilf",
+        "informiere",
+        "kontaktiere",
+        "korrigiere",
+        "kürze",
+        "leite",
+        "lies",
+        "liste",
+        "lösche",
+        "mach",
+        "mache",
+        "melde",
+        "nenne",
+        "notiere",
+        "ordne",
+        "plane",
+        "prüfe",
+        "rufe",
+        "sag",
+        "sage",
+        "schicke",
+        "schreib",
+        "schreibe",
+        "sende",
+        "sortiere",
+        "storniere",
+        "suche",
+        "teile",
+        "überarbeite",
+        "übersetze",
+        "verfasse",
+        "vergleiche",
+        "vervollständige",
+        "zeige",
+    }
+)
+_FIRST_WORD = re.compile(r"(\w+)\s*")
+_SENTENCE_END = ".!?:\n"
 # "Kontakt: …", "Bestellnummer 4711": a single capitalised noun used as a field label.
 # Limited to one-word entities: dropping "Lena Krüger:" would leak a real name.
 _LABEL_CONTEXT = re.compile(r"\s*(?::|\d)")
@@ -74,6 +142,11 @@ def chunks(text: str, limit: int = CHUNK_CHARACTERS) -> Iterator[tuple[int, str]
         start = end
 
 
+def _starts_sentence(text: str, position: int) -> bool:
+    before = text[:position].rstrip(" \t")
+    return not before or before[-1] in _SENTENCE_END
+
+
 class NerDetector:
     name = "spacy_ner"
 
@@ -107,6 +180,10 @@ class NerDetector:
         noise = _LEADING_NOISE.match(text, start, end)
         if noise is not None:
             start = noise.end()
+        if _starts_sentence(text, start):
+            first = _FIRST_WORD.match(text, start, end)
+            if first is not None and first.group(1).lower() in _INSTRUCTION_VERBS:
+                start = first.end()  # "Schreibe Petra Hoffmann" keeps the name
         value = text[start:end]
         # The small model also tags numbers, verbs and multi-line fragments.
         if (
