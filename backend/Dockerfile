@@ -28,6 +28,7 @@ COPY --from=builder /opt/venv /opt/venv
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+COPY start.sh ./
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

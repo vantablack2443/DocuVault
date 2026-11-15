@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     seed_admin_email: str | None = None
     seed_admin_password: SecretStr | None = None
 
+    @field_validator("gemini_api_key", "groq_api_key", "metrics_token", mode="before")
+    @classmethod
+    def blank_means_unset(cls, value: object) -> object:
+        """Hosting dashboards store a field left empty as an empty string.
+
+        Without this an empty METRICS_TOKEN would switch /metrics on with an
+        empty token, and an empty API key would add a provider that always fails.
+        """
+        return None if isinstance(value, str) and not value.strip() else value
+
     @field_validator("database_url")
     @classmethod
     def use_asyncpg_driver(cls, value: str) -> str:

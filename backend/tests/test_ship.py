@@ -175,3 +175,18 @@ def test_libpq_style_url_is_translated_for_asyncpg() -> None:
     )
     plain = "postgresql+asyncpg://docuvault:docuvault@postgres:5432/docuvault"
     assert Settings(database_url=plain).database_url == plain
+
+
+def test_blank_optional_secrets_count_as_unset() -> None:
+    blank, spaces = SecretStr(""), SecretStr("  ")
+    # What arrives from the environment is a plain string; the validator sees that.
+    settings = Settings.model_validate(
+        {"gemini_api_key": "", "groq_api_key": "  ", "metrics_token": ""}
+    )
+    assert (settings.gemini_api_key, settings.groq_api_key, settings.metrics_token) == (
+        None,
+        None,
+        None,
+    )
+    assert Settings.model_validate({"metrics_token": "x"}).metrics_token is not None
+    assert blank.get_secret_value() == "" and spaces.get_secret_value().strip() == ""

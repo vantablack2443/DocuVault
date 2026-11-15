@@ -3,8 +3,8 @@
 OpenAI-compatible LLM gateway that minimises German PII before prompts reach an
 external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
-> **Status:** all five phases are built and tested locally. Not deployed yet and CI has
-> not run yet (the repository has no remote so far). Steps: [docs/DEPLOY.md](docs/DEPLOY.md).
+> **Status:** all five phases are built; CI and the Kubernetes smoke test pass on GitHub.
+> Public deployment is in progress. Steps: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ```mermaid
 flowchart LR
@@ -180,8 +180,7 @@ process ([ADR 0004](docs/adr/0004-audit-chain-and-event-consumer.md)).
 - **Cold starts.** On the free host the first request after a quiet period waits up
   to a minute.
 - **Not yet verified:** real Gemini and Groq calls (tests use a fake provider and the
-  recording), the GitHub workflows, and the `kind` install. The chart passes
-  `helm lint` and schema validation, and the image was run read-only locally.
+  recording).
 - **Not built:** document search with `pgvector` (the extension is installed, nothing
   uses it yet), tracing, dashboards for the metrics.
 

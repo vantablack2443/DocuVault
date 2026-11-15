@@ -9,7 +9,8 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     # The free plan has no pre-deploy step, so migrations run before the server starts.
-    dockerCommand: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+    # A script, not an inline `sh -c "…"`: Render passes a quoted command on as one word.
+    dockerCommand: sh start.sh
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:

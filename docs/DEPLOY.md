@@ -81,6 +81,5 @@ rule is no card (see "Alternatives" below).
 
 ## Alternatives
 
-- Koyeb instead of Render: same image, same variables, start command from
-  `render.yaml`.
+- Koyeb instead of Render: same image, same variables, start command `sh start.sh`.
 - Any Kubernetes cluster: `deploy/helm/docuvault` (see the README).
