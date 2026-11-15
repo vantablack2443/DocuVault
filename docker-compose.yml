@@ -8,6 +8,7 @@ x-backend-env: &backend-env
   JWT_SECRET: local-compose-only-secret-0123456789abcdef
   SEED_ADMIN_EMAIL: admin@beispiel.test
   SEED_ADMIN_PASSWORD: local-demo-password
+  METRICS_TOKEN: local-metrics-token
 
 services:
   postgres:
@@ -63,6 +64,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  web:
+    build:
+      context: web
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:8080"
+    depends_on:
+      - api
 
   test:
     profiles: ["test"]
