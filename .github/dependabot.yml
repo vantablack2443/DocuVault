@@ -15,6 +15,13 @@ updates:
   - package-ecosystem: docker
     directories: [/backend, /web]
     schedule: { interval: weekly }
+    # Language runtimes move on purpose, not by proposal: spaCy and the memory
+    # tuning are tied to Python 3.12, the dashboard is tested on Node 20.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }

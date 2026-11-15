@@ -11,6 +11,13 @@
   },
   "vars": {
     "API_ORIGIN": "https://docuvault-api-eqtt.onrender.com"
+  },
+  // Preview builds (pull requests) use the same public API. They get no
+  // PROXY_SECRET, so the API treats them like any other anonymous caller.
+  "previews": {
+    "vars": {
+      "API_ORIGIN": "https://docuvault-api-eqtt.onrender.com"
+    }
   }
   // PROXY_SECRET is set as a secret in the Cloudflare dashboard, never here.
 }
