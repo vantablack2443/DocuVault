@@ -1,4 +1,6 @@
-from sqlalchemy import MetaData
+from datetime import datetime
+
+from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 # Stable constraint names so Alembic autogenerate produces deterministic migrations.
@@ -13,3 +15,4 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    type_annotation_map = {datetime: DateTime(timezone=True)}  # noqa: RUF012

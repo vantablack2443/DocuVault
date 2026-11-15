@@ -3,7 +3,7 @@
 OpenAI-compatible LLM gateway that redacts German PII before prompts leave the
 network, re-hydrates responses, and keeps a tamper-evident audit log.
 
-The full phased plan lives in `docs/PLAN.md`. Current phase: **0 (scaffold) done, 1 (auth and tenancy) next**.
+The full phased plan lives in `docs/PLAN.md`. Current phase: **1 (auth and tenancy) done, 2 (redaction engine and benchmark) next**.
 
 ## Hard rules
 
@@ -49,9 +49,14 @@ docker compose run --rm api alembic revision -m "describe change"
 ## Layout
 
 ```
-backend/app/core/   config, logging, security
-backend/app/db/     engine, models, repositories
-backend/app/api/    routers
+backend/app/core/      config, logging, security primitives, domain errors
+backend/app/db/        models, session dependency, repositories (all SQL)
+backend/app/api/       health probes
+backend/app/auth/      login, refresh, guest sandbox, RBAC dependencies
+backend/app/admin/     users and API keys
+backend/app/gateway/   OpenAI-compatible /v1 endpoints (API-key auth)
+backend/app/ratelimit/ Redis rate limiting
+backend/app/seed.py    local admin seed
 backend/alembic/    migrations
 backend/tests/      pytest (needs Postgres + Redis from compose or CI services)
 docs/adr/           architecture decision records
@@ -62,4 +67,7 @@ docs/adr/           architecture decision records
 - `ruff` for lint and format, `mypy --strict`; both must be clean before commit.
 - Coverage gate: 85 % on `app/`.
 - Structured JSON logs through `structlog`; bind context, do not format strings.
+- Auth: humans use JWT access tokens (`PrincipalDep`, `require_roles(...)`); machines use `dv_…` API keys (`ApiKeyPrincipalDep`). Roles: admin, member, auditor. Guest access is a sandbox tenant (ADR 0001).
+- Services raise domain errors from `app/core/errors.py`; `app/main.py` maps them to HTTP. Services commit; repositories never do.
+- `alembic check` runs in CI: models and migrations must agree.
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).

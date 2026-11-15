@@ -3,8 +3,8 @@
 OpenAI-compatible LLM gateway that minimises German PII before prompts reach an
 external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
-> **Status: Phase 0 of 5 (scaffold).** Health endpoints, database migrations, CI.
-> No redaction, auth or gateway yet. Roadmap: [docs/PLAN.md](docs/PLAN.md).
+> **Status: Phase 1 of 5 (auth and tenancy).** JWT login with refresh rotation, RBAC,
+> API keys, guest sandbox tenants. No redaction or LLM gateway yet. Roadmap: [docs/PLAN.md](docs/PLAN.md).
 
 ## Run locally
 
@@ -15,6 +15,8 @@ docker compose up --build
 - API: http://localhost:8000
 - OpenAPI docs: http://localhost:8000/docs
 - Liveness / readiness: `/healthz`, `/readyz`
+- Guest sandbox (no sign-up): `curl -X POST http://localhost:8000/auth/guest`
+- Local admin: `admin@beispiel.test` / `local-demo-password` (compose only)
 
 ## Checks
 

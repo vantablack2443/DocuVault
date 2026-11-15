@@ -4,13 +4,23 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.admin import router as admin_router
 from app.api import health
+from app.auth import router as auth_router
 from app.core.config import get_settings
+from app.core.errors import (
+    AuthenticationError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitedError,
+)
 from app.core.logging import configure_logging
+from app.gateway import router as gateway_router
 
 log = structlog.get_logger()
 
@@ -64,8 +74,40 @@ def create_app() -> FastAPI:
         )
         return response
 
+    register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(auth_router.router)
+    app.include_router(admin_router.router)
+    app.include_router(gateway_router.router)
     return app
+
+
+def register_error_handlers(app: FastAPI) -> None:
+    """Map domain errors to HTTP. Messages stay generic: no hint about what exactly failed."""
+
+    @app.exception_handler(AuthenticationError)
+    async def unauthorized(_: Request, __: AuthenticationError) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Invalid or missing credentials"},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(PermissionDeniedError)
+    async def forbidden(_: Request, __: PermissionDeniedError) -> JSONResponse:
+        return JSONResponse({"detail": "Insufficient role"}, status_code=status.HTTP_403_FORBIDDEN)
+
+    @app.exception_handler(NotFoundError)
+    async def not_found(_: Request, __: NotFoundError) -> JSONResponse:
+        return JSONResponse({"detail": "Not found"}, status_code=status.HTTP_404_NOT_FOUND)
+
+    @app.exception_handler(RateLimitedError)
+    async def rate_limited(_: Request, error: RateLimitedError) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Too many requests"},
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        )
 
 
 app = create_app()

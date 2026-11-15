@@ -34,7 +34,7 @@ jobs:
     env:
       ENVIRONMENT: test
       DATABASE_URL: postgresql+asyncpg://docuvault:docuvault@localhost:5432/docuvault
-      REDIS_URL: redis://localhost:6379/0
+      REDIS_URL: redis://localhost:6379/1
       LLM_MODE: replay
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +47,8 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run alembic upgrade head
+      - name: Models and migrations agree
+        run: uv run alembic check
       - run: uv run pytest
 
   image:

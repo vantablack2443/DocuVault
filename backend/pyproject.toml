@@ -13,6 +13,8 @@ dependencies = [
     "redis>=5.2",
     "structlog>=24.4",
     "httpx>=0.27",
+    "pyjwt>=2.10",
+    "argon2-cffi>=23.1",
 ]
 
 [dependency-groups]
@@ -40,7 +42,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
 known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
+"tests/*" = ["S101", "S105", "S106"]
 
 [tool.mypy]
 strict = true
@@ -52,3 +54,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=85"
+
+[tool.coverage.run]
+# SQLAlchemy's async engine hops through greenlets; without this, lines after
+# an awaited database call are reported as never executed.
+concurrency = ["greenlet", "thread"]

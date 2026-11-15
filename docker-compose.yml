@@ -4,6 +4,10 @@ x-backend-env: &backend-env
   REDIS_URL: redis://redis:6379/0
   LOG_LEVEL: INFO
   LLM_MODE: replay
+  # Local-only values. Real deployments set these in the host's secret store.
+  JWT_SECRET: local-compose-only-secret-0123456789abcdef
+  SEED_ADMIN_EMAIL: admin@beispiel.test
+  SEED_ADMIN_PASSWORD: local-demo-password
 
 services:
   postgres:
@@ -36,7 +40,7 @@ services:
     build:
       context: backend
       target: runtime
-    command: ["alembic", "upgrade", "head"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
     environment: *backend-env
     depends_on:
       postgres:
@@ -68,7 +72,8 @@ services:
     environment:
       <<: *backend-env
       ENVIRONMENT: test
-    command: ["sh", "-c", "ruff check . && ruff format --check . && mypy && alembic upgrade head && pytest"]
+      REDIS_URL: redis://redis:6379/1
+    command: ["sh", "-c", "ruff check . && ruff format --check . && mypy && alembic upgrade head && alembic check && pytest"]
     depends_on:
       postgres:
         condition: service_healthy
