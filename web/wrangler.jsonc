@@ -1,0 +1,8 @@
+// Cloudflare Workers, static assets only: serves the built dashboard, runs no code.
+{
+  "name": "docuvault",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
