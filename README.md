@@ -3,8 +3,12 @@
 OpenAI-compatible LLM gateway that minimises German PII before prompts reach an
 external LLM, re-hydrates the response, and keeps a tamper-evident audit log.
 
-> **Status:** all five phases are built; CI and the Kubernetes smoke test pass on GitHub.
-> Public deployment is in progress. Steps: [docs/DEPLOY.md](docs/DEPLOY.md).
+[![CI](https://github.com/vantablack2443/DocuVault/actions/workflows/ci.yml/badge.svg)](https://github.com/vantablack2443/DocuVault/actions/workflows/ci.yml)
+[![k8s-smoke](https://github.com/vantablack2443/DocuVault/actions/workflows/k8s-smoke.yml/badge.svg)](https://github.com/vantablack2443/DocuVault/actions/workflows/k8s-smoke.yml)
+
+**Live demo: <https://docuvault.dipubalamurugan.workers.dev>** — click "Try the live demo",
+no sign-up. The API runs on a free host that sleeps when idle, so the first click can
+take up to a minute. API docs: <https://docuvault-api-eqtt.onrender.com/docs>
 
 ```mermaid
 flowchart LR
