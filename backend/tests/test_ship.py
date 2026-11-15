@@ -205,3 +205,65 @@ def test_blank_optional_secrets_count_as_unset() -> None:
     )
     assert Settings.model_validate({"metrics_token": "x"}).metrics_token is not None
     assert blank.get_secret_value() == "" and spaces.get_secret_value().strip() == ""
+
+
+# --- hardening after the security review -------------------------------------
+
+
+def test_platform_header_is_used_when_configured() -> None:
+    request = request_from("10.0.0.1", "6.6.6.6, 172.16.0.5", cf_connecting_ip="203.0.113.9")
+    assert client_ip(request, 1, None, "CF-Connecting-IP") == "203.0.113.9"
+    assert client_ip(request, 1, None, None) == "172.16.0.5"
+    assert client_ip(request_from("10.0.0.1"), 0, None, "CF-Connecting-IP") == "10.0.0.1"
+
+
+async def test_guest_sandboxes_are_capped_across_all_visitors(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """Even with a different (or forged) address each time, the total is bounded."""
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"trusted_proxy_hops": 1, "guest_logins_per_hour_total": 3}
+    )
+    codes = [
+        (await client.post("/auth/guest", headers={"X-Forwarded-For": f"198.18.0.{n}"})).status_code
+        for n in range(1, 6)
+    ]
+    assert codes == [200, 200, 200, 429, 429]
+
+
+async def test_password_guessing_is_rate_limited(
+    app: FastAPI, client: AsyncClient, session: AsyncSession
+) -> None:
+    user = await create_user(session, with_password=True)
+    limit = get_settings().logins_per_window
+
+    async def attempt(email: str) -> int:
+        body = {"email": email, "password": "wrong-password"}
+        return (await client.post("/auth/login", json=body)).status_code
+
+    assert [await attempt(user.email) for _ in range(limit)] == [401] * limit
+    blocked = await client.post(
+        "/auth/login", json={"email": user.email, "password": "wrong-password"}
+    )
+    assert blocked.status_code == 429 and int(blocked.headers["retry-after"]) > 0
+    # The same address is blocked for other accounts too.
+    assert await attempt("someone-else@beispiel.test") == 429
+    keys = [key async for key in app.state.redis.scan_iter("ratelimit:login:*")]
+    assert keys and not any(user.email in key for key in keys)  # no e-mail in Redis
+
+
+async def test_oversized_request_is_refused_before_reading(client: AsyncClient) -> None:
+    limit = get_settings().max_body_bytes
+    response = await client.post(
+        "/playground/chat", content=b"x" * (limit + 1), headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 413
+    assert (await client.get("/healthz")).headers["x-content-type-options"] == "nosniff"
+
+
+async def test_request_id_is_only_accepted_in_a_plain_form(client: AsyncClient) -> None:
+    kept = await client.get("/healthz", headers={"X-Request-ID": "trace-12345678"})
+    replaced = await client.get("/healthz", headers={"X-Request-ID": 'x"} {"forged": "log line'})
+    assert kept.headers["x-request-id"] == "trace-12345678"
+    assert replaced.headers["x-request-id"] != 'x"} {"forged": "log line'
+    assert len(replaced.headers["x-request-id"]) == 32

@@ -10,8 +10,7 @@ from app.auth.schemas import (
     TokenResponse,
 )
 from app.auth.service import IssuedTokens
-from app.core.config import SettingsDep
-from app.core.network import client_ip
+from app.core.config import SettingsDep, caller_address
 from app.db.session import SessionDep
 
 router = APIRouter(
@@ -29,9 +28,23 @@ def _token_response(tokens: IssuedTokens) -> TokenResponse:
     )
 
 
-@router.post("/login", response_model=TokenResponse, summary="Sign in with e-mail and password")
-async def login(body: LoginRequest, session: SessionDep, settings: SettingsDep) -> TokenResponse:
-    tokens = await service.login(session, settings, email=body.email, password=body.password)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Sign in with e-mail and password",
+    responses={status.HTTP_429_TOO_MANY_REQUESTS: {"model": ErrorResponse}},
+)
+async def login(
+    body: LoginRequest, request: Request, session: SessionDep, settings: SettingsDep
+) -> TokenResponse:
+    tokens = await service.login(
+        session,
+        request.app.state.redis,
+        settings,
+        email=body.email,
+        password=body.password,
+        client_ip=caller_address(request, settings),
+    )
     return _token_response(tokens)
 
 
@@ -60,11 +73,7 @@ async def guest(request: Request, session: SessionDep, settings: SettingsDep) ->
         session,
         request.app.state.redis,
         settings,
-        client_ip=client_ip(
-            request,
-            settings.trusted_proxy_hops,
-            settings.proxy_secret.get_secret_value() if settings.proxy_secret else None,
-        ),
+        client_ip=caller_address(request, settings),
     )
     return _token_response(tokens)
 

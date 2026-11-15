@@ -2,9 +2,11 @@ from functools import lru_cache
 from typing import Annotated, Literal, Self
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.network import client_ip
 
 # Placeholder so local runs work out of the box; rejected when ENVIRONMENT=production.
 INSECURE_DEV_JWT_SECRET = "local-development-only-secret-never-use-in-production"  # noqa: S105
@@ -27,6 +29,12 @@ class Settings(BaseSettings):
 
     guest_tenant_ttl_minutes: int = 60
     guest_logins_per_hour: int = 10
+    # Across all visitors. Bounds abuse even if the per-visitor address is wrong or forged.
+    guest_logins_per_hour_total: int = 60
+    # Failed and successful password sign-ins per address / per e-mail in 15 minutes.
+    logins_per_window: int = 10
+    # Requests with a larger declared body are refused before they are read.
+    max_body_bytes: int = 1_000_000
     # Live LLM calls per UTC day shared by all guest sandboxes; beyond it guests get replay.
     guest_daily_llm_calls: int = 200
     # Reverse proxies in front of the app that append to X-Forwarded-For (0 = ignore header).
@@ -35,6 +43,8 @@ class Settings(BaseSettings):
     metrics_token: SecretStr | None = None
     # Shared with the dashboard's edge proxy, which then may state the visitor address.
     proxy_secret: SecretStr | None = None
+    # Header through which the hosting platform reports the visitor address, if it has one.
+    client_ip_header: str | None = None
 
     # Names and places need the spaCy model; formats with checksums work without it.
     ner_enabled: bool = True
@@ -65,7 +75,12 @@ class Settings(BaseSettings):
     seed_admin_password: SecretStr | None = None
 
     @field_validator(
-        "gemini_api_key", "groq_api_key", "metrics_token", "proxy_secret", mode="before"
+        "gemini_api_key",
+        "groq_api_key",
+        "metrics_token",
+        "proxy_secret",
+        "client_ip_header",
+        mode="before",
     )
     @classmethod
     def blank_means_unset(cls, value: object) -> object:
@@ -104,6 +119,16 @@ class Settings(BaseSettings):
         ):
             raise ValueError("JWT_SECRET must be set to a random value of at least 32 characters")
         return self
+
+
+def caller_address(request: Request, settings: Settings) -> str:
+    """The visitor address used for rate limits, resolved with this deployment's settings."""
+    return client_ip(
+        request,
+        settings.trusted_proxy_hops,
+        settings.proxy_secret.get_secret_value() if settings.proxy_secret else None,
+        settings.client_ip_header,
+    )
 
 
 @lru_cache

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -36,6 +37,7 @@ from app.redaction.engine import build_engine
 log = structlog.get_logger()
 
 REQUEST_ID_HEADER = "X-Request-ID"
+_REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 @asynccontextmanager
@@ -91,12 +93,21 @@ def create_app() -> FastAPI:
     async def request_context(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > settings.max_body_bytes:
+            return JSONResponse(
+                {"detail": "Request body too large"},
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            )
+        # A caller may supply an id to correlate logs, but only a short, plain one.
+        supplied = request.headers.get(REQUEST_ID_HEADER, "")
+        request_id = supplied if _REQUEST_ID.fullmatch(supplied) else uuid.uuid4().hex
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
         started = time.perf_counter()
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
         elapsed = time.perf_counter() - started
         # The route template, not the raw path: ids in paths would explode the label set.
         route = getattr(request.scope.get("route"), "path", metrics.UNMATCHED_ROUTE)

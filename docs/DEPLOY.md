@@ -59,13 +59,15 @@ rule is no card (see "Alternatives" below).
 - `curl https://<api>/readyz` reports `postgres` and `redis` as `ok`.
 - Open the dashboard in a private window, click "Try the live demo", send the
   example message. The answer should name a real provider, not "recording".
-- **Client address.** `TRUSTED_PROXY_HOPS=1` assumes exactly one proxy appends to
-  `X-Forwarded-For`. Start two guest sessions from two networks (laptop and
-  phone); if the second is refused with "Too many requests" while the first is
-  far from its limit, all visitors share one address and the hop count is wrong.
-  Check with `redis-cli --scan --pattern 'ratelimit:guest-login:*'`: the keys
-  must show visitor addresses, not one proxy address.
-- **Model names.** Defaults are `gemini-3.5-flash` and `openai/gpt-oss-120b`.
+- **Client address.** Checked on 2026-11-16: with `TRUSTED_PROXY_HOPS=1` alone, 12
+  guest sign-ins with a different forged `X-Forwarded-For` each all succeeded, so
+  that header does not identify visitors on Render. The blueprint therefore sets
+  `CLIENT_IP_HEADER=CF-Connecting-IP`. Repeat the test after a deploy: more than 10
+  sign-ins from one machine within an hour must end in "Too many requests", whatever
+  headers are sent. Independent of this, all visitors together are capped at
+  `GUEST_LOGINS_PER_HOUR_TOTAL` (60) new sandboxes per hour.
+- **Model names.** Defaults are `gemini-3.5-flash` (confirmed working on 2026-11-16)
+  and `openai/gpt-oss-120b` (not yet confirmed).
   Providers retire models on short notice (Groq retired `llama-3.3-70b-versatile`
   in August 2026). If the dashboard only ever answers from the recording, look
   for `provider_failed` in the logs and set `GEMINI_MODEL` / `GROQ_MODEL`.

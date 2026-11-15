@@ -25,6 +25,9 @@ services:
         value: live
       - key: TRUSTED_PROXY_HOPS
         value: "1"
+      # Set by Cloudflare (Render's front door) and overwritten if a client sends it.
+      - key: CLIENT_IP_HEADER
+        value: CF-Connecting-IP
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL

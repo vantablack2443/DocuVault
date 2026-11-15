@@ -82,8 +82,19 @@ def _issue_token_pair(session: AsyncSession, user: User, settings: Settings) -> 
 
 
 async def login(
-    session: AsyncSession, settings: Settings, *, email: str, password: str
+    session: AsyncSession,
+    redis: Redis,
+    settings: Settings,
+    *,
+    email: str,
+    password: str,
+    client_ip: str,
 ) -> IssuedTokens:
+    # Password guessing: limited per address and per account. The account key is a
+    # digest so no e-mail address ends up in Redis.
+    account = security.sha256_hex(normalise_email(email))[:32]
+    for key in (f"ratelimit:login:ip:{client_ip}", f"ratelimit:login:account:{account}"):
+        await enforce_fixed_window(redis, key, limit=settings.logins_per_window, window_seconds=900)
     user = await repo.get_user_by_email(session, normalise_email(email))
     stored_hash = user.password_hash if user and user.password_hash else None
     # Argon2 is CPU-bound: keep it off the event loop. Always run it, so unknown
@@ -142,6 +153,12 @@ async def guest_login(
         redis,
         f"ratelimit:guest-login:{client_ip}",
         limit=settings.guest_logins_per_hour,
+        window_seconds=3600,
+    )
+    await enforce_fixed_window(
+        redis,
+        "ratelimit:guest-login:all",
+        limit=settings.guest_logins_per_hour_total,
         window_seconds=3600,
     )
     now = datetime.now(UTC)
