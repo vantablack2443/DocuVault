@@ -16,7 +16,7 @@ updates:
     directories: [/backend, /web]
     schedule: { interval: weekly }
     # Language runtimes move on purpose, not by proposal: spaCy and the memory
-    # tuning are tied to Python 3.12, the dashboard is tested on Node 20.
+    # tuning are tied to Python 3.12, the dashboard is tested on Node 24.
     ignore:
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]

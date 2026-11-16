@@ -32,7 +32,7 @@ jobs:
           uvx pip-audit -r requirements.audit.txt --disable-pip --no-deps
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - name: JavaScript (npm audit, high and above)
         working-directory: web
         run: npm audit --audit-level=high

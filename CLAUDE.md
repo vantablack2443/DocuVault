@@ -33,7 +33,7 @@ docker compose up --build                     # API on :8000 (docs at /docs), da
 docker compose --profile test run --rm test   # ruff, mypy, pytest with coverage
 docker compose down -v                        # stop and wipe volumes
 cd web && npm run check && npm test && npm run build   # dashboard: typecheck, unit tests, build
-cd web && npm run dev                         # dashboard with hot reload (needs Node 20)
+cd web && npm run dev                         # dashboard with hot reload (needs Node 22.12 or newer; CI uses 24)
 ```
 
 Regenerate the lockfile after editing dependencies:
