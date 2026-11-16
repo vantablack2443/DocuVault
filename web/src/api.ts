@@ -176,12 +176,27 @@ async function send(path: string, init: RequestInit, access?: string): Promise<R
   if (access) {
     headers.set("Authorization", `Bearer ${access}`);
   }
-  try {
-    return await fetch(`${API_URL}${path}`, { ...init, headers });
-  } catch {
-    throw new ApiError(0, "network");
+  // Right after the free host wakes up, its front door can answer 502 or 503 for
+  // a few seconds although the server is about to be ready. Those answers come
+  // from the proxy, not from the application, so repeating the request is safe.
+  for (let attempt = 0; ; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${path}`, { ...init, headers });
+    } catch {
+      throw new ApiError(0, "network");
+    }
+    const starting = response.status === 502 || response.status === 503;
+    const fromProxy = !(response.headers.get("content-type") ?? "").includes("application/json");
+    if (!starting || !fromProxy || attempt >= STARTUP_RETRIES) {
+      return response;
+    }
+    await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_DELAY_MS));
   }
 }
+
+const STARTUP_RETRIES = 5;
+const STARTUP_RETRY_DELAY_MS = 2000;
 
 let refreshing: Promise<boolean> | null = null;
 
