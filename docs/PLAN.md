@@ -52,7 +52,7 @@ docuvault/
   web/                      React dashboard
   deploy/helm/docuvault/    chart (api Deployment, Service, ConfigMap, Secret, probes)
   docs/adr/                 short architecture decision records
-  .github/workflows/        ci.yml, k8s-smoke.yml, keepwarm.yml
+  .github/workflows/        ci.yml, k8s-smoke.yml, security.yml (keep-warm is a Worker Cron Trigger)
 ```
 
 ## CLAUDE.md constitution (to generate in Phase 0)

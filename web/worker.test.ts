@@ -97,4 +97,13 @@ describe("worker", () => {
       expect(spy).not.toHaveBeenCalled();
     },
   );
+
+  it("pings only the API's liveness probe on the cron trigger", async () => {
+    const spy = upstream();
+    const pending: Promise<unknown>[] = [];
+    await worker.scheduled({}, env, { waitUntil: (p: Promise<unknown>) => pending.push(p) });
+    await Promise.all(pending);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(String(spy.mock.calls[0]?.[0])).toBe("https://api.example/healthz");
+  });
 });

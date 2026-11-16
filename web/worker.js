@@ -62,4 +62,18 @@ export default {
       redirect: "manual",
     });
   },
+
+  // Cron Trigger (wrangler.jsonc): the free API host stops the container
+  // after 15 minutes without traffic, and a cold start takes about a minute.
+  // A request to the liveness probe every 10 minutes keeps it running.
+  // GitHub's scheduler was too unreliable for this (runs hours late).
+  async scheduled(_controller, env, ctx) {
+    const probe = new URL("/healthz", env.API_ORIGIN);
+    ctx.waitUntil(
+      fetch(probe, { signal: AbortSignal.timeout(90_000) }).then(
+        (response) => console.log(`keep-warm ${response.status}`),
+        (error) => console.log(`keep-warm failed: ${error}`),
+      ),
+    );
+  },
 };

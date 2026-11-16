@@ -50,9 +50,10 @@ rule is no card (see "Alternatives" below).
    Cloudflare (Worker → Settings → Variables and Secrets → type *Secret*) and
    Render (Environment). It lets the API trust the visitor address the Worker
    reports. Without it the demo works, but visitors may share one sign-in limit.
-6. **Keep-warm.** In the GitHub repository settings add the Actions *variable*
-   `KEEPWARM_URL` with the API base URL. The `keep-warm` workflow then pings
-   `/healthz` every 10 minutes during the day.
+6. **Keep-warm.** Nothing to set up. The Worker has a Cron Trigger
+   (`triggers.crons` in `web/wrangler.jsonc`) that requests the API's `/healthz`
+   every 10 minutes from 05:00 to 22:59 UTC. Check it under Worker → Settings →
+   Trigger Events, and its runs under Worker → Logs.
 
 ## Check after the first deploy
 
@@ -84,8 +85,10 @@ rule is no card (see "Alternatives" below).
 - **Guest sign-ins.** 10 per hour per visitor address.
 - **Memory.** About 185 MB at rest, about 320 MB for a moment while the language
   model loads at start.
-- **Keep-warm.** Scheduled workflows are free only for public repositories. On a
-  private one, 10-minute pings would use up the monthly Actions minutes.
+- **Keep-warm.** About 560 container hours a month, inside Render's 750 free
+  hours. Pinging around the clock would use about 744, which leaves no room for
+  a second service. A GitHub Actions schedule was tried first and dropped:
+  GitHub ran it a few times a day instead of every 10 minutes.
 
 ## Alternatives
 

@@ -12,6 +12,11 @@
   "vars": {
     "API_ORIGIN": "https://docuvault-api-eqtt.onrender.com"
   },
+  // Keep-warm ping (worker.js "scheduled"), every 10 minutes 05:00-22:59 UTC.
+  // About 560 container hours a month, inside the free host's 750.
+  "triggers": {
+    "crons": ["*/10 5-22 * * *"]
+  },
   // Preview builds (pull requests) use the same public API. They get no
   // PROXY_SECRET, so the API treats them like any other anonymous caller.
   "previews": {
