@@ -115,13 +115,16 @@ async def test_token_buckets_are_independent_per_key(app: FastAPI) -> None:
 # --- OpenAI-compatible provider (offline, mocked transport) -------------------
 
 
-def _provider(handler: httpx.MockTransport) -> OpenAICompatibleProvider:
+def _provider(
+    handler: httpx.MockTransport, reasoning_effort: str | None = None
+) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         "gemini",
         base_url="https://llm.invalid/v1/",
         api_key="test-key",
         model="some-model",
         client=httpx.AsyncClient(transport=handler),
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -158,6 +161,20 @@ async def test_provider_sends_openai_request_and_parses_answer() -> None:
             "max_tokens": 64,
         },
     }
+
+
+async def test_provider_sends_reasoning_effort_when_configured() -> None:
+    bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    await _provider(httpx.MockTransport(handler), "low").complete(
+        MESSAGES, temperature=None, max_tokens=None
+    )
+
+    assert bodies[0]["reasoning_effort"] == "low"
 
 
 @pytest.mark.parametrize(

@@ -39,9 +39,17 @@ class OpenAICompatibleProvider:
     """Gemini and Groq both expose the OpenAI chat-completions wire format."""
 
     def __init__(
-        self, name: str, *, base_url: str, api_key: str, model: str, client: httpx.AsyncClient
+        self,
+        name: str,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        client: httpx.AsyncClient,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.name = name
+        self._reasoning_effort = reasoning_effort
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._model = model
@@ -59,6 +67,8 @@ class OpenAICompatibleProvider:
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if self._reasoning_effort is not None:
+            payload["reasoning_effort"] = self._reasoning_effort
         return payload
 
     async def complete(

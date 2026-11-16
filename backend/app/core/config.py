@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    # Both default models think before answering; at the default effort Gemini
+    # often took longer than the timeout. Blank sends no reasoning_effort at all.
+    gemini_reasoning_effort: str | None = "low"
+    groq_reasoning_effort: str | None = "low"
     provider_timeout_seconds: float = 30.0
     breaker_failure_threshold: int = 3
     breaker_cooldown_seconds: float = 30.0
@@ -77,6 +81,8 @@ class Settings(BaseSettings):
     @field_validator(
         "gemini_api_key",
         "groq_api_key",
+        "gemini_reasoning_effort",
+        "groq_reasoning_effort",
         "metrics_token",
         "proxy_secret",
         "client_ip_header",

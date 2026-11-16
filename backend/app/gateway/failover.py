@@ -137,6 +137,7 @@ def build_chain(settings: Settings, client: httpx.AsyncClient) -> ProviderChain:
                     api_key=settings.gemini_api_key.get_secret_value(),
                     model=settings.gemini_model,
                     client=client,
+                    reasoning_effort=settings.gemini_reasoning_effort,
                 )
             )
         if settings.groq_api_key is not None:
@@ -147,6 +148,7 @@ def build_chain(settings: Settings, client: httpx.AsyncClient) -> ProviderChain:
                     api_key=settings.groq_api_key.get_secret_value(),
                     model=settings.groq_model,
                     client=client,
+                    reasoning_effort=settings.groq_reasoning_effort,
                 )
             )
     providers.append(ReplayProvider())
