@@ -35,7 +35,7 @@ jobs:
           node-version: 24
       - name: JavaScript (npm audit, high and above)
         working-directory: web
-        run: npm audit --audit-level=high
+        run: node scripts/audit.mjs   # npm audit, high and above, minus web/audit-allowlist.json
 
   secrets:
     name: Secrets in the git history

@@ -1,0 +1,3 @@
+{
+  "GHSA-fc5q-39xc-vjpf": "picomatch <=4.0.7 ReDoS through crafted extglob patterns. Only vite, vitest and tinyglobby use it, at build and test time, with glob patterns written in this repository, never with visitor input; nothing of it ships in the dashboard bundle. No fixed version was published when this was added (2026-11-17). Remove this entry once picomatch releases a fix and Dependabot bumps it."
+}

@@ -92,4 +92,5 @@ docs/adr/           architecture decision records
 - Dashboard in production calls the API as `/api/...` on its own address; `web/worker.js` forwards (ADR 0005). Never point the production build at the `onrender.com` address: content blockers stop it.
 - Pushes that touch only `web/` or docs do not redeploy the API (`buildFilter` in `render.yaml`).
 - Security workflow (`.github/workflows/security.yml`): pip-audit, npm audit, gitleaks, Trivy, CodeQL. A gitleaks false positive goes into `.gitleaksignore` with a comment saying why; never weaken a rule globally.
+- npm audit runs through `web/scripts/audit.mjs`. An advisory with no fixed version that cannot be reached goes into `web/audit-allowlist.json` by id, with the reason and date; the script fails on stale entries. Never lower `--audit-level`.
 - Any code that builds a URL or path from request input needs a test with `//host`, `\\` and encoded variants (see `web/worker.test.ts`).
