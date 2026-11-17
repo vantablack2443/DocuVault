@@ -202,8 +202,8 @@ process ([ADR 0004](docs/adr/0004-audit-chain-and-event-consumer.md)).
 - **Free-tier providers may use submitted text to improve their products.** They
   receive placeholders, plus whatever detection missed.
 - **Cold starts.** On the free host the first request after a quiet period waits up
-  to a minute. A Worker Cron Trigger pings the API every 10 minutes from 05:00 to
-  22:59 UTC; outside those hours the first visitor waits.
+  to a minute. A Worker Cron Trigger pings the API every 10 minutes from 07:00 to
+  20:20 UTC (08:00-21:30 German winter time); outside those hours the first visitor waits.
 - **Not yet verified:** real Gemini and Groq calls (tests use a fake provider and the
   recording).
 - **Not built:** document search with `pgvector` (the extension is installed, nothing

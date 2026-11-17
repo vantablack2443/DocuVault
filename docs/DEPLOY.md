@@ -52,8 +52,10 @@ rule is no card (see "Alternatives" below).
    reports. Without it the demo works, but visitors may share one sign-in limit.
 6. **Keep-warm.** Nothing to set up. The Worker has a Cron Trigger
    (`triggers.crons` in `web/wrangler.jsonc`) that requests the API's `/healthz`
-   every 10 minutes from 05:00 to 22:59 UTC. Check it under Worker → Settings →
-   Trigger Events, and its runs under Worker → Logs.
+   every 10 minutes from 07:00 to 20:20 UTC (08:00-21:30 German winter time).
+   Check it under Worker → Settings → Trigger Events, and its runs under
+   Worker → Logs. The Workers Builds deploy command must be `npx wrangler deploy`:
+   `wrangler versions upload` does not apply cron triggers.
 
 ## Check after the first deploy
 
@@ -85,7 +87,7 @@ rule is no card (see "Alternatives" below).
 - **Guest sign-ins.** 10 per hour per visitor address.
 - **Memory.** About 185 MB at rest, about 320 MB for a moment while the language
   model loads at start.
-- **Keep-warm.** About 560 container hours a month, inside Render's 750 free
+- **Keep-warm.** About 420 container hours a month, inside Render's 750 free
   hours. Pinging around the clock would use about 744, which leaves no room for
   a second service. A GitHub Actions schedule was tried first and dropped:
   GitHub ran it a few times a day instead of every 10 minutes.
