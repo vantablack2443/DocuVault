@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type CurrentUser, hasSession, setSessionEndHandler } from "./api";
+import {
+  api,
+  type CurrentUser,
+  hasSession,
+  setSessionEndHandler,
+  WAKE_URL,
+} from "./api";
 import { Audit } from "./views/Audit";
 import { Landing } from "./views/Landing";
 import { Playground } from "./views/Playground";
@@ -8,7 +14,11 @@ import { Settings } from "./views/Settings";
 import { Usage } from "./views/Usage";
 
 const TABS = [
-  { id: "playground", label: "Playground", roles: ["admin", "member", "auditor"] },
+  {
+    id: "playground",
+    label: "Playground",
+    roles: ["admin", "member", "auditor"],
+  },
   { id: "usage", label: "Usage", roles: ["admin", "auditor"] },
   { id: "audit", label: "Audit log", roles: ["admin", "auditor"] },
   { id: "settings", label: "Keys and policy", roles: ["admin", "auditor"] },
@@ -77,9 +87,20 @@ export function App() {
   const waking = !awake && slow && (
     <p className="waking" role="status">
       <span className="waking-dot" aria-hidden="true" />
-      {stuck
-        ? "The server is still not answering. Reload the page; if that does not help, the server may be restarting. Try again in a few minutes."
-        : "Waking the server. It sleeps when nobody uses it, so the first visit takes up to a minute."}
+      <span>
+        {stuck
+          ? "The server is still not answering. Reload the page; if that does not help, the server may be restarting. Try again in a few minutes."
+          : "Waking the server. It runs on a free plan and sleeps when nobody uses it, so the first visit takes up to a minute."}
+        {WAKE_URL && (
+          <>
+            {" "}
+            <a href={WAKE_URL} target="_blank" rel="noopener noreferrer">
+              Taking too long? Wake it up here
+            </a>{" "}
+            (opens a tab; this page continues once the server answers).
+          </>
+        )}
+      </span>
     </p>
   );
 
@@ -102,7 +123,9 @@ export function App() {
     );
   }
 
-  const tabs = TABS.filter((item) => (item.roles as readonly string[]).includes(user.role));
+  const tabs = TABS.filter((item) =>
+    (item.roles as readonly string[]).includes(user.role),
+  );
   const active = tabs.some((item) => item.id === tab) ? tab : "playground";
 
   return (
@@ -134,8 +157,9 @@ export function App() {
       </header>
       {user.is_guest && (
         <p className="notice">
-          You are in a private sandbox for the made-up company Musterfirma GmbH. Usage and requests
-          from before today are sample data. Everything here is deleted after 60 minutes.
+          You are in a private sandbox for the made-up company Musterfirma GmbH.
+          Usage and requests from before today are sample data. Everything here
+          is deleted after 60 minutes.
         </p>
       )}
       <main>

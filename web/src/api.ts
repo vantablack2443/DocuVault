@@ -3,6 +3,11 @@
 
 import type { Entity } from "./text";
 
+// Direct address of the API's liveness probe. Opening it in a tab wakes the
+// sleeping free host, which a request through the Worker does not always do.
+// Unset in local development, where nothing sleeps.
+export const WAKE_URL: string | undefined = import.meta.env.VITE_WAKE_URL || undefined;
+
 export const API_URL: string = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(
   /\/$/,
   "",
