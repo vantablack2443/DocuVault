@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error plain JavaScript module without type declarations
 import worker from "./worker.js";
+// @ts-expect-error plain JavaScript module without type declarations
+import { keepWarm, WAKE_ATTEMPTS } from "./keepwarm.js";
 
 const assets = { fetch: vi.fn(async () => new Response("asset")) };
 const env = { ASSETS: assets, API_ORIGIN: "https://api.example", PROXY_SECRET: "s3cret" };
@@ -105,5 +107,24 @@ describe("worker", () => {
     await Promise.all(pending);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(String(spy.mock.calls[0]?.[0])).toBe("https://api.example/healthz");
+  });
+
+  it("keeps pinging a sleeping API until it answers 200", async () => {
+    const statuses = [502, 502, 200];
+    const spy = vi.fn(async () => new Response("", { status: statuses.shift() ?? 200 }));
+    vi.stubGlobal("fetch", spy);
+    const pause = vi.fn(async () => {});
+    expect(await keepWarm(env, pause)).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(pause).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after a bounded number of attempts", async () => {
+    const spy = vi.fn(async () => {
+      throw new Error("down");
+    });
+    vi.stubGlobal("fetch", spy);
+    expect(await keepWarm(env, async () => {})).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(WAKE_ATTEMPTS);
   });
 });

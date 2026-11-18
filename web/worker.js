@@ -5,6 +5,8 @@
 // talks to one address only. Content blockers stop cross-site requests to
 // free hosting domains, which left visitors with a page that never loaded.
 
+import { keepWarm } from "./keepwarm.js";
+
 const PREFIX = "/api";
 
 // The API's interactive documentation loads scripts from a public CDN. Served
@@ -68,12 +70,6 @@ export default {
   // A request to the liveness probe every 10 minutes keeps it running.
   // GitHub's scheduler was too unreliable for this (runs hours late).
   async scheduled(_controller, env, ctx) {
-    const probe = new URL("/healthz", env.API_ORIGIN);
-    ctx.waitUntil(
-      fetch(probe, { signal: AbortSignal.timeout(90_000) }).then(
-        (response) => console.log(`keep-warm ${response.status}`),
-        (error) => console.log(`keep-warm failed: ${error}`),
-      ),
-    );
+    ctx.waitUntil(keepWarm(env));
   },
 };
